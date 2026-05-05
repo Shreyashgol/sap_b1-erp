@@ -4,6 +4,7 @@ import json
 import importlib.util
 from pathlib import Path
 
+from app.chat_response import generate_chat_response
 from app.config import AP_INVOICE_API_URL, PURCHASE_ORDER_API_URL, PURCHASE_RETURN_API_URL
 
 # --- Configuration ---
@@ -52,10 +53,12 @@ supervisor_agent = load_supervisor()
 for msg in st.session_state.history:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if "decision" in msg:
-            st.json(msg["decision"])
-        if "api_response" in msg:
-            st.json(msg["api_response"])
+        if "decision" in msg or "api_response" in msg:
+            with st.expander("Technical details"):
+                if "decision" in msg:
+                    st.json(msg["decision"])
+                if "api_response" in msg:
+                    st.json(msg["api_response"])
 
 prompt = st.chat_input("Enter your request (e.g., 'Update purchase return 12345 with comments...')")
 
@@ -66,7 +69,6 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        st.markdown("### 🧠 Supervisor Decision")
         if not supervisor_agent:
             st.error("Failed to load Supervisor Agent.")
             st.stop()
@@ -82,15 +84,16 @@ if prompt:
                     st.json(response_data)
                     raise RuntimeError("Supervisor did not return a fetchAgent routing decision.")
                 
-                st.success(f"Routed to: **{decision_data['subagent']}**")
-                st.json(decision_data)
+                with st.expander("Supervisor decision", expanded=False):
+                    st.success(f"Routed to: **{decision_data['subagent']}**")
+                    st.json(decision_data)
                 
             except Exception as e:
                 st.error(f"Routing failed: {e}")
                 st.stop()
                 
         # 3. Execute against backend
-        st.markdown(f"### ⚙️ Executing on {decision_data['documentType']} backend")
+        st.caption(f"Executing on {decision_data['documentType'].replace('_', ' ')} backend...")
         
         url_map = {
             "purchase_order": po_url,
@@ -120,21 +123,39 @@ if prompt:
                 
                 api_response = response.json() if response.headers.get("content-type", "").startswith("application/json") else {"detail": response.text}
                 
-                if response.status_code in (200, 201):
-                    st.success("✅ Execution Successful")
-                    st.json(api_response)
-                else:
-                    st.error(f"❌ Execution Failed (HTTP {response.status_code})")
+                chat_answer = generate_chat_response(
+                    prompt=prompt,
+                    routing_decision=decision_data,
+                    api_response=api_response,
+                    status_code=response.status_code,
+                )
+                st.markdown(chat_answer)
+
+                with st.expander("Backend response", expanded=False):
+                    if response.status_code in (200, 201):
+                        st.success("Execution successful")
+                    else:
+                        st.error(f"Execution failed (HTTP {response.status_code})")
                     st.json(api_response)
                     
                 st.session_state.history.append({
                     "role": "assistant", 
-                    "content": f"Routed to **{decision_data['subagent']}** and executed.",
+                    "content": chat_answer,
                     "decision": decision_data,
                     "api_response": api_response
                 })
                 
             except requests.exceptions.ConnectionError:
-                st.error(f"❌ Connection Error: Could not connect to {target_url}. Is the FastAPI server running?")
+                api_response = {"detail": f"Could not connect to {target_url}. Is the FastAPI server running?"}
+                chat_answer = generate_chat_response(prompt, decision_data, api_response, None)
+                st.markdown(chat_answer)
+                st.session_state.history.append({
+                    "role": "assistant",
+                    "content": chat_answer,
+                    "decision": decision_data,
+                    "api_response": api_response,
+                })
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+                api_response = {"detail": str(e)}
+                chat_answer = generate_chat_response(prompt, decision_data, api_response, None)
+                st.markdown(chat_answer)
