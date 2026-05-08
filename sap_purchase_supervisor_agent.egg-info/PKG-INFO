@@ -1,0 +1,297 @@
+Metadata-Version: 2.4
+Name: sap-purchase-supervisor-agent
+Version: 0.1.0
+Summary: FastAPI backend and Streamlit supervisor UI for SAP Business One purchase workflows.
+Author: SAP Purchase Supervisor Agent Team
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: altair==6.0.0
+Requires-Dist: annotated-types==0.7.0
+Requires-Dist: anyio==4.13.0
+Requires-Dist: attrs==26.1.0
+Requires-Dist: bcrypt==5.0.0
+Requires-Dist: blinker==1.9.0
+Requires-Dist: cachetools==7.0.5
+Requires-Dist: certifi==2026.2.25
+Requires-Dist: charset-normalizer==3.4.7
+Requires-Dist: click==8.3.2
+Requires-Dist: colorama==0.4.6
+Requires-Dist: ecdsa==0.19.2
+Requires-Dist: fastapi==0.115.0
+Requires-Dist: gitdb==4.0.12
+Requires-Dist: GitPython==3.1.46
+Requires-Dist: h11==0.16.0
+Requires-Dist: httpcore==1.0.9
+Requires-Dist: httpx==0.28.1
+Requires-Dist: idna==3.11
+Requires-Dist: Jinja2==3.1.6
+Requires-Dist: jsonpatch==1.33
+Requires-Dist: jsonpointer==3.1.1
+Requires-Dist: jsonschema==4.26.0
+Requires-Dist: jsonschema-specifications==2025.9.1
+Requires-Dist: langchain-core==0.2.43
+Requires-Dist: langgraph==0.2.14
+Requires-Dist: langgraph-checkpoint==1.0.12
+Requires-Dist: langsmith==0.1.147
+Requires-Dist: MarkupSafe==3.0.3
+Requires-Dist: msgpack==1.1.2
+Requires-Dist: narwhals==2.19.0
+Requires-Dist: numpy==2.4.4
+Requires-Dist: ollama==0.6.1
+Requires-Dist: orjson==3.11.8
+Requires-Dist: packaging==24.2
+Requires-Dist: pandas==3.0.2
+Requires-Dist: passlib==1.7.4
+Requires-Dist: pillow==12.2.0
+Requires-Dist: protobuf==7.34.1
+Requires-Dist: pyarrow==23.0.1
+Requires-Dist: pyasn1==0.6.3
+Requires-Dist: pydantic>=2.10.0
+Requires-Dist: pydantic_core>=2.27.0
+Requires-Dist: pydeck==0.9.2
+Requires-Dist: python-dateutil==2.9.0.post0
+Requires-Dist: python-jose==3.3.0
+Requires-Dist: psycopg[binary]==3.3.3
+Requires-Dist: SQLAlchemy==2.0.49
+Requires-Dist: PyYAML==6.0.3
+Requires-Dist: referencing==0.37.0
+Requires-Dist: requests==2.32.3
+Requires-Dist: requests-toolbelt==1.0.0
+Requires-Dist: rpds-py==0.30.0
+Requires-Dist: rsa==4.9.1
+Requires-Dist: six==1.17.0
+Requires-Dist: smmap==5.0.3
+Requires-Dist: starlette==0.38.6
+Requires-Dist: streamlit==1.56.0
+Requires-Dist: tenacity==8.5.0
+Requires-Dist: toml==0.10.2
+Requires-Dist: tornado==6.5.5
+Requires-Dist: typing-inspection==0.4.2
+Requires-Dist: typing_extensions==4.15.0
+Requires-Dist: tzdata==2026.1
+Requires-Dist: urllib3==2.6.3
+Requires-Dist: uvicorn==0.30.6
+Requires-Dist: watchdog==6.0.0
+
+# SAP Purchase Supervisor Agent
+
+Unified SAP Business One purchase-agent workspace with one FastAPI backend and one Streamlit Supervisor UI.
+
+The old split folders have been consolidated into a single `app/` package. Purchase order, AP invoice, and purchase return agents now live as subfolders under `app/agents/`, while shared API, CRUD, DB, model, operations, and schema code stays in top-level package folders.
+
+## Folder Structure
+
+```text
+sap/
+├── .env.example
+├── README.md
+├── requirements.txt
+├── streamlit_app.py
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   ├── chat_response.py
+│   ├── agents/
+│   │   ├── supervisor/
+│   │   ├── purchase_order/
+│   │   ├── ap_invoice/
+│   │   └── purchase_return/
+│   ├── api/
+│   │   ├── auth.py
+│   │   ├── purchase_orders.py
+│   │   ├── ap_invoices.py
+│   │   └── purchase_returns.py
+│   ├── crud/
+│   │   ├── purchase_order_crud.py
+│   │   ├── ap_invoice_crud.py
+│   │   └── purchase_return_crud.py
+│   ├── db/
+│   │   ├── base.py
+│   │   ├── purchase_order_db.py
+│   │   ├── purchase_order_models.py
+│   │   ├── ap_invoice_db.py
+│   │   ├── ap_invoice_models.py
+│   │   ├── purchase_return_db.py
+│   │   └── purchase_return_models.py
+│   ├── model/
+│   ├── operations/
+│   └── schema/
+└── shared/
+    ├── env.py
+    └── db/
+        └── runtime.py
+```
+
+## What Works
+
+- One Streamlit Supervisor Agent UI that routes purchase order, AP invoice, and purchase return prompts.
+- Supervisor routing for purchase order, AP invoice, and purchase return prompts.
+- Purchase order create, update, fetch, close, cancel.
+- AP invoice create, update, fetch, close, cancel, reopen.
+- Purchase return create, update, fetch, close, cancel, reopen.
+- Purchase order OCR document reading.
+- Purchase order bulk CSV/XLSX upload.
+- JWT login shared by all endpoints.
+- Neon/Postgres database connection shared by all agents.
+
+## Setup
+
+Create and configure your environment:
+
+```bash
+cp .env.example .env
+```
+
+Install dependencies:
+
+```bash
+python3 -m venv myvenv
+./myvenv/bin/python -m pip install -r requirements.txt
+```
+
+If `myvenv` already exists, just run the install command.
+
+## Environment
+
+Important `.env` values:
+
+```bash
+SAP_AGENTS_DATABASE_URL=postgresql://username:password@host:5432/sap_agents_db?sslmode=require
+SAP_BASE_URL=http://localhost:50000/b1s/v1
+SAP_USERNAME=manager
+SAP_PASSWORD=password
+SAP_COMPANYDB=SBODEMOUS
+JWT_SECRET=change-me
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=gemma4:e2b
+SQL_QUERY_TIMEOUT=30
+```
+
+`SAP_AGENTS_DATABASE_URL` is the preferred Neon/Postgres variable. Legacy `DATABASE_CONNECTION_STRING` and `DATABASE_URL` still work through the shared runtime fallback.
+
+## Start Ollama
+
+Install and start Ollama locally, then pull the configured model:
+
+```bash
+ollama pull gemma4:e2b
+ollama serve
+```
+
+If Ollama is already running as a background service, only the `ollama pull` command is needed.
+
+## Start The Backend
+
+From the repository root:
+
+```bash
+./myvenv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Check it:
+
+```bash
+curl http://127.0.0.1:8000/
+```
+
+## Start Streamlit
+
+Open a second terminal from the repository root:
+
+```bash
+./myvenv/bin/python -m streamlit run streamlit_app.py --server.address 127.0.0.1 --server.port 8501
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8501
+```
+
+In the sidebar, keep the FastAPI URL as:
+
+```text
+http://127.0.0.1:8000
+```
+
+Default demo login:
+
+```text
+username: user1
+password: pass123456
+```
+
+The UI intentionally exposes only the Supervisor Agent. Users should type every request into the supervisor chat; the supervisor then routes to the correct document agent internally.
+
+## API Examples
+
+Get a JWT token:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/login?username=user1&password=pass123456"
+```
+
+Run a purchase order prompt:
+
+```bash
+TOKEN="paste-token-here"
+
+curl -X POST "http://127.0.0.1:8000/purchase-orders/parse-and-execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Show me the latest 5 purchase orders"}'
+```
+
+Run an AP invoice prompt:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/ap-invoices/parse-and-execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Show me the latest 5 AP invoices"}'
+```
+
+Run a purchase return prompt:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/purchase-returns/parse-and-execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Show me the latest 5 purchase returns"}'
+```
+
+## Verification
+
+Compile and import-check the consolidated app:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m compileall app streamlit_app.py
+
+PYTHONDONTWRITEBYTECODE=1 ./myvenv/bin/python - <<'PY'
+from app.main import app
+from app.agents.supervisor.supervisor_agent import execute
+print(app.title)
+print(len(app.routes))
+print(execute("show latest purchase orders").data["fetchAgent"]["documentType"])
+PY
+```
+
+Expected output includes:
+
+```text
+SAP B1 Purchase Supervisor Agent
+11
+purchase_order
+```
+
+## Development Notes
+
+- Keep new code inside the unified `app/` package.
+- Add document-agent logic under `app/agents/<agent_name>/`.
+- Add SAP endpoints under `app/api/`.
+- Add repository/CRUD logic under `app/crud/`.
+- Add Neon/Postgres database logic under `app/db/`.
+- Add intent/data models under `app/model/`.
+- Add shared and document-specific operations under `app/operations/`.
+- Add request/response schemas under `app/schema/`.
+- Keep secrets in `.env`; do not commit real credentials.
