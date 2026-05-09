@@ -19,13 +19,13 @@ Supervisor Agent  ──LangGraph routing──►  Purchase Order Agent
        │                                        ▼
        └──────────────────────────────  FastAPI Backend (app/main.py)
                                                 │
-                                        PostgreSQL (Neon)
+                                        External SAP HANA DB API (vzone.in)
                                         SAP Business One Service Layer
 ```
 
 **LLM stack:** All intent parsing, routing, SQL generation, and chat responses run through the **Groq API** (`llama-3.3-70b-versatile`). No local Ollama required.
 
-**RAG fetch:** Analytical fetch queries (totals, rankings, overdue, etc.) bypass the intent parser and use ChromaDB + `sentence-transformers` to retrieve relevant schema and example SQL, then generate a safe `SELECT` via Groq.
+**RAG fetch:** Analytical fetch queries (totals, rankings, overdue, etc.) bypass the intent parser and use ChromaDB + `sentence-transformers` to retrieve relevant schema and example SQL, then generate a strict SAP HANA `SELECT` query via Groq. The query is safely executed against an external SAP HANA Database API endpoint.
 
 ---
 
@@ -183,6 +183,20 @@ In the sidebar:
 - Keep **FastAPI URL** as `http://127.0.0.1:8000`
 - Log in with your credentials (default demo: `user1` / `pass123456`)
 - Type any purchase request in plain English — the Supervisor routes it automatically
+- Open the **Supervisor and backend details** expander to view the real-time **Agent Flow**, the generated **SAP HANA SQL**, and the resulting JSON.
+
+---
+
+## Building as a Package
+
+The project can be built into a standard Python `.whl` distribution package.
+
+```bash
+python3 -m pip install build
+python3 -m build --wheel
+```
+
+This will create a `.whl` file in the `dist/` directory that can be installed directly via pip.
 
 ---
 
@@ -235,9 +249,10 @@ curl -X POST "http://127.0.0.1:8000/purchase-returns/parse-and-execute" \
 | Purchase Return: create, update, fetch, cancel, close, reopen | ✅ |
 | Bulk CSV / XLSX upload for purchase orders | ✅ |
 | OCR document reading (PDF, PNG, JPG — macOS only) | ✅ |
-| Analytical RAG fetch (ChromaDB + Groq SQL generation) | ✅ |
-| JWT authentication shared by all endpoints | ✅ |
-| PostgreSQL (Neon) persistence shared by all agents | ✅ |
+| Analytical RAG fetch (ChromaDB + Groq HANA SQL generation) | ✅ |
+| Transparent UI showing full Agent Routing Flow & SQL Generation | ✅ |
+| Fully simulated Dummy SAP Service Layer for local development | ✅ |
+| External SAP HANA Database API integration | ✅ |
 | Groq LLM for all inference (no local Ollama required) | ✅ |
 
 ---
