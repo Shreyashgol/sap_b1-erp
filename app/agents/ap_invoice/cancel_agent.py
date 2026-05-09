@@ -16,8 +16,12 @@ def execute(intent, repository) -> APInvoiceActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    sql = generate_write_sql("ap_invoice", "cancel", {"DocEntry": intent.docEntry})
+
     return APInvoiceActionResponse(
         status="cancelled",
         message=f"✅ Got it! AP Invoice **{intent.docEntry}** has been successfully cancelled in the system.",
         docEntry=intent.docEntry,
+        data={"sql": sql},
     )

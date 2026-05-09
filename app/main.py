@@ -19,10 +19,13 @@ app.include_router(purchase_returns.router, prefix="/purchase-returns", tags=["P
 
 @app.on_event("startup")
 async def startup_event():
-    init_db_pool()
+    try:
+        init_db_pool()
+        print("Database pools initialized successfully.")
+    except Exception as e:
+        print(f"Failed to initialize database pools (is .env configured?): {e}")
 
 
 @app.get("/")
 def root():
     return {"message": f"{APP_NAME} is running"}
-

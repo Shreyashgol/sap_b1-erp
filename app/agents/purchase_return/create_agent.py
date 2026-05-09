@@ -33,8 +33,12 @@ def execute(intent, repository) -> PurchaseReturnActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    sql = generate_write_sql("purchase_return", "create", payload)
+
     return PurchaseReturnActionResponse(
         status="created",
         message=f"🎉 Success! I've created a new Purchase Return for vendor **{intent.cardCode}**. The new document entry is **{result.get('DocEntry')}**.",
         docEntry=result.get("DocEntry"),
+        data={"sql": sql, "sapResponse": result},
     )

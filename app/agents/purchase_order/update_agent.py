@@ -30,8 +30,13 @@ def execute(intent, repository) -> PurchaseOrderActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    po_payload["DocEntry"] = intent.docEntry
+    sql = generate_write_sql("purchase_order", "update", po_payload)
+
     return PurchaseOrderActionResponse(
         status="updated",
         message=f"✏️ Success! I've updated the details for Purchase Order **{intent.docEntry}**.",
         docEntry=intent.docEntry,
+        data={"sql": sql},
     )

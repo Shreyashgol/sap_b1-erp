@@ -16,8 +16,12 @@ def execute(intent, repository) -> APInvoiceActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    sql = generate_write_sql("ap_invoice", "close", {"DocEntry": intent.docEntry})
+
     return APInvoiceActionResponse(
         status="closed",
         message=f"🔒 All done! AP Invoice **{intent.docEntry}** is now closed.",
         docEntry=intent.docEntry,
+        data={"sql": sql},
     )

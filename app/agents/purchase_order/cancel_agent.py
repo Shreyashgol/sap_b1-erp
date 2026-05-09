@@ -22,8 +22,12 @@ def execute(intent, repository) -> PurchaseOrderActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    sql = generate_write_sql("purchase_order", "cancel", {"DocEntry": intent.docEntry})
+
     return PurchaseOrderActionResponse(
         status="cancelled",
         message=f"✅ Got it! Purchase Order **{intent.docEntry}** has been successfully cancelled in the system.",
         docEntry=intent.docEntry,
+        data={"sql": sql},
     )

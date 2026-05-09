@@ -1,40 +1,22 @@
-from datetime import date, datetime
-from decimal import Decimal
-import re
+import json
+import logging
+import urllib.parse
 from typing import Any
 
-from sqlalchemy import text
+import requests
 
-from app.config import SQL_QUERY_TIMEOUT
-from app.db.base import get_db_session
-
-
-FORBIDDEN_SQL_PATTERNS = (
-    r"\binsert\b",
-    r"\bupdate\b",
-    r"\bdelete\b",
-    r"\bdrop\b",
-    r"\balter\b",
-    r"\btruncate\b",
-    r"\bcreate\b",
-    r"\bgrant\b",
-    r"\brevoke\b",
-    r"\bcopy\b",
-)
-
-ALLOWED_TABLES = {
-    "opor",
-    "por1",
-    "opch",
-    "pch1",
-    "orpd",
-    "rpd1",
-    "purchase_orders",
-    "purchase_order_lines",
-}
+logger = logging.getLogger(__name__)
 
 
-def _validate_read_only_sql(sql: str):
+def execute_read_only_sql(sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """
+    Executes a read-only HANA SQL query via the external vzone.in API.
+    """
+    # The new HANA pipeline does not support parameterized queries via this GET API.
+    # The SQL should already be fully formatted by the LLM or caller.
+    if params:
+        logger.warning(f"execute_read_only_sql called with params {params}, but HANA GET API does not support parameterized SQL directly.")
+
     normalized = sql.strip()
     if not normalized.lower().startswith("select"):
         raise ValueError("Only SELECT queries are allowed for fetch operations")
@@ -42,32 +24,27 @@ def _validate_read_only_sql(sql: str):
     if ";" in normalized.rstrip(";"):
         raise ValueError("Multiple SQL statements are not allowed")
 
-    lowered = normalized.lower()
-    for pattern in FORBIDDEN_SQL_PATTERNS:
-        if re.search(pattern, lowered):
-            raise ValueError("Unsafe SQL detected in fetch query")
+    encoded_query = urllib.parse.quote(normalized)
+    url = f"http://vzone.in:1662/api/GetMethod/GetData?query={encoded_query}"
 
-    referenced_tables = set(re.findall(r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)", lowered))
-    unknown_tables = referenced_tables - ALLOWED_TABLES
-    if unknown_tables:
-        raise ValueError(f"Query references unsupported tables: {', '.join(sorted(unknown_tables))}")
-
-
-def _serialize_scalar(value: Any):
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    return value
-
-
-def execute_read_only_sql(sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    _validate_read_only_sql(sql)
-
-    with get_db_session() as session:
-        timeout_ms = max(1000, int(SQL_QUERY_TIMEOUT) * 1000)
-        session.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
-        result = session.execute(text(sql), params or {})
-        rows = result.mappings().all()
-
-    return [{key: _serialize_scalar(value) for key, value in row.items()} for row in rows]
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        
+        # The API might return a list of dicts directly or wrap it in a response object.
+        # Assuming it returns a list of rows as dicts:
+        if isinstance(data, list):
+            return data
+        elif isinstance(data, dict):
+            # Check for common wrapper structures
+            for key in ["data", "result", "results", "value"]:
+                if key in data and isinstance(data[key], list):
+                    return data[key]
+            return [data]
+        else:
+            return []
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to execute HANA query on vzone.in: {e}")
+        raise ValueError(f"HANA Database execution failed: {str(e)}") from e

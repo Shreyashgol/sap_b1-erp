@@ -125,10 +125,29 @@ for message in st.session_state.history:
         st.markdown(message["content"])
         if message["role"] == "assistant" and show_json:
             with st.expander("Supervisor and backend details"):
-                if message.get("routing"):
-                    st.json(message["routing"])
-                if message.get("api_response"):
-                    st.json(message["api_response"])
+                routing = message.get("routing")
+                api_response = message.get("api_response")
+                if routing:
+                    if api_response and isinstance(api_response, dict) and "data" in api_response and "sql" in api_response["data"]:
+                        st.markdown("#### 1. Agent Flow")
+                        doc_type = routing.get("documentType", "unknown").replace("_", " ").title()
+                        action = routing.get("action", "unknown").title()
+                        st.info(f"**Supervisor Agent** ➡️ **{action} {doc_type} Sub-Agent**")
+                        st.json(routing)
+                        st.markdown("#### 2. SQL Generation")
+                        sql_query = api_response.get("data", {}).get("sql", "N/A")
+                        st.code(sql_query, language="sql")
+                        st.markdown("#### 3. JSON Response")
+                        
+                        # Show relevant data part based on action
+                        if routing.get("action") == "fetch":
+                            st.json(api_response.get("data", {}).get("results", api_response.get("data", {}).get("rows", [])))
+                        else:
+                            st.json(api_response.get("data", {}).get("sapResponse", api_response))
+                    else:
+                        st.json(routing)
+                        if api_response:
+                            st.json(api_response)
 
 prompt = st.chat_input("Example: Show me the latest 5 purchase orders for vendor V001")
 
@@ -172,8 +191,25 @@ if prompt:
                 st.markdown(assistant_reply)
                 if show_json:
                     with st.expander("Supervisor and backend details", expanded=False):
-                        st.json(routing_decision)
-                        st.code(json.dumps(api_response, indent=2, default=str), language="json")
+                        if api_response and isinstance(api_response, dict) and "data" in api_response and "sql" in api_response["data"]:
+                            st.markdown("#### 1. Agent Flow")
+                            doc_type = routing_decision.get("documentType", "unknown").replace("_", " ").title()
+                            action = routing_decision.get("action", "unknown").title()
+                            st.info(f"**Supervisor Agent** ➡️ **{action} {doc_type} Sub-Agent**")
+                            st.json(routing_decision)
+                            st.markdown("#### 2. SQL Generation")
+                            sql_query = api_response.get("data", {}).get("sql", "N/A")
+                            st.code(sql_query, language="sql")
+                            st.markdown("#### 3. JSON Response")
+                            
+                            # Show relevant data part based on action
+                            if routing_decision.get("action") == "fetch":
+                                st.json(api_response.get("data", {}).get("results", api_response.get("data", {}).get("rows", [])))
+                            else:
+                                st.json(api_response.get("data", {}).get("sapResponse", api_response))
+                        else:
+                            st.json(routing_decision)
+                            st.code(json.dumps(api_response, indent=2, default=str), language="json")
 
                 st.session_state.history.append(
                     {

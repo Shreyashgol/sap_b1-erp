@@ -33,8 +33,13 @@ def execute(intent, repository) -> APInvoiceActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    payload["DocEntry"] = intent.docEntry
+    sql = generate_write_sql("ap_invoice", "update", payload)
+
     return APInvoiceActionResponse(
         status="updated",
         message=f"✏️ Success! I've updated the details for AP Invoice **{intent.docEntry}**.",
         docEntry=intent.docEntry,
+        data={"sql": sql},
     )

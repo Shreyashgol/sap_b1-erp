@@ -30,9 +30,12 @@ def execute(intent, repository) -> APInvoiceActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    sql = generate_write_sql("ap_invoice", "create", invoice_payload)
+
     return APInvoiceActionResponse(
         status="created",
         message=f"🎉 Success! I've created a new AP Invoice for vendor **{intent.cardCode}**. The new document entry is **{result.get('DocEntry')}**.",
         docEntry=result.get("DocEntry"),
-        data=result,
+        data={"sql": sql, "sapResponse": result},
     )

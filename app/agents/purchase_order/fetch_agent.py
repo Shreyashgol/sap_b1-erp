@@ -224,14 +224,7 @@ def execute(intent, repository):
     use_rag = should_use_purchase_rag(fetch_query)
 
     try:
-        if use_rag:
-            query_spec = build_purchase_rag_fetch_sql(fetch_query=fetch_query)
-        else:
-            query_spec = build_purchase_order_fetch_sql(
-                fetch_query=fetch_query,
-                intent_card_code=intent.cardCode,
-                intent_doc_entry=intent.docEntry,
-            )
+        query_spec = build_purchase_rag_fetch_sql(fetch_query=fetch_query)
         rows = execute_read_only_sql(query_spec["sql"], query_spec["params"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

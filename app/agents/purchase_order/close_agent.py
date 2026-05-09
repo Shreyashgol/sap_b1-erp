@@ -16,8 +16,12 @@ def execute(intent, repository) -> PurchaseOrderActionResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=translate_sap_error(str(exc))) from exc
 
+    from app.operations.write_rag import generate_write_sql
+    sql = generate_write_sql("purchase_order", "close", {"DocEntry": intent.docEntry})
+
     return PurchaseOrderActionResponse(
         status="closed",
         message=f"🔒 All done! Purchase Order **{intent.docEntry}** is now closed.",
         docEntry=intent.docEntry,
+        data={"sql": sql},
     )
