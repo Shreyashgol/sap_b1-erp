@@ -6,7 +6,7 @@
     "document_type": "purchase_order",
     "tables_used": ["opor"],
     "embedding_text": "total purchase order value total po amount purchase commitment ordered value sum orders",
-    "sql": "SELECT SUM(doctotal) AS total_purchase_order_value FROM opor WHERE COALESCE(canceled, 'N') <> 'Y'"
+    "sql": "SELECT SUM(\"DocTotal\") AS \"total_purchase_order_value\" FROM opor WHERE COALESCE(\"CANCELED\", 'N') <> 'Y'"
   },
   {
     "question": "how many purchase orders are open",
@@ -15,7 +15,7 @@
     "document_type": "purchase_order",
     "tables_used": ["opor"],
     "embedding_text": "count open purchase orders how many pending po open po pending orders",
-    "sql": "SELECT COUNT(*) AS open_purchase_order_count FROM opor WHERE docstatus = 'O' AND COALESCE(canceled, 'N') <> 'Y'"
+    "sql": "SELECT COUNT(*) AS \"open_purchase_order_count\" FROM opor WHERE \"DocStatus\" = 'O' AND COALESCE(\"CANCELED\", 'N') <> 'Y'"
   },
   {
     "question": "which vendors have the highest purchase order value",
@@ -24,7 +24,7 @@
     "document_type": "purchase_order",
     "tables_used": ["opor"],
     "embedding_text": "top vendors by purchase order value supplier wise po amount vendor spend ordered value ranking",
-    "sql": "SELECT cardcode, cardname, SUM(doctotal) AS total_order_value FROM opor WHERE COALESCE(canceled, 'N') <> 'Y' GROUP BY cardcode, cardname ORDER BY total_order_value DESC LIMIT 10"
+    "sql": "SELECT \"CardCode\", \"CardName\", SUM(\"DocTotal\") AS \"total_order_value\" FROM opor WHERE COALESCE(\"CANCELED\", 'N') <> 'Y' GROUP BY \"CardCode\", \"CardName\" ORDER BY \"total_order_value\" DESC LIMIT 10"
   },
   {
     "question": "which items have the most pending purchase order quantity",
@@ -33,7 +33,7 @@
     "document_type": "purchase_order",
     "tables_used": ["por1", "opor"],
     "embedding_text": "top pending items purchase order open quantity item wise pending po quantity not received",
-    "sql": "SELECT p1.itemcode, p1.dscription, SUM(p1.openqty) AS pending_quantity FROM por1 p1 JOIN opor p0 ON p0.docentry = p1.docentry WHERE p0.docstatus = 'O' AND COALESCE(p0.canceled, 'N') <> 'Y' GROUP BY p1.itemcode, p1.dscription ORDER BY pending_quantity DESC LIMIT 10"
+    "sql": "SELECT p1.\"ItemCode\", p1.\"Dscription\", SUM(p1.\"OpenQty\") AS \"pending_quantity\" FROM por1 p1 JOIN opor p0 ON p0.\"DocEntry\" = p1.\"DocEntry\" WHERE p0.\"DocStatus\" = 'O' AND COALESCE(p0.\"CANCELED\", 'N') <> 'Y' GROUP BY p1.\"ItemCode\", p1.\"Dscription\" ORDER BY \"pending_quantity\" DESC LIMIT 10"
   },
   {
     "question": "show overdue purchase orders",
@@ -42,7 +42,7 @@
     "document_type": "purchase_order",
     "tables_used": ["opor"],
     "embedding_text": "overdue purchase orders delayed po due date passed open orders vendor delivery delay",
-    "sql": "SELECT docnum, cardcode, cardname, docduedate, doctotal FROM opor WHERE docstatus = 'O' AND COALESCE(canceled, 'N') <> 'Y' AND docduedate < CURRENT_DATE ORDER BY docduedate ASC LIMIT 10"
+    "sql": "SELECT \"DocNum\", \"CardCode\", \"CardName\", \"DocDueDate\", \"DocTotal\" FROM opor WHERE \"DocStatus\" = 'O' AND COALESCE(\"CANCELED\", 'N') <> 'Y' AND \"DocDueDate\" < CURRENT_DATE ORDER BY \"DocDueDate\" ASC LIMIT 10"
   },
   {
     "question": "what is the total AP invoice amount",
@@ -51,7 +51,7 @@
     "document_type": "ap_invoice",
     "tables_used": ["opch"],
     "embedding_text": "total ap invoice amount total purchase invoice value vendor bill payable liability sum invoices",
-    "sql": "SELECT SUM(doctotal) AS total_ap_invoice_amount FROM opch WHERE COALESCE(canceled, 'N') <> 'Y'"
+    "sql": "SELECT SUM(\"DocTotal\") AS \"total_ap_invoice_amount\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y'"
   },
   {
     "question": "how much AP invoice balance is due",
@@ -60,7 +60,7 @@
     "document_type": "ap_invoice",
     "tables_used": ["opch"],
     "embedding_text": "ap invoice balance due unpaid payable outstanding vendor bills pending payment",
-    "sql": "SELECT SUM(COALESCE(balancedue, doctotal - COALESCE(paidtodate, 0))) AS total_balance_due FROM opch WHERE COALESCE(canceled, 'N') <> 'Y'"
+    "sql": "SELECT SUM(COALESCE(\"BalanceDue\", \"DocTotal\" - COALESCE(\"PaidToDate\", 0))) AS \"total_balance_due\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y'"
   },
   {
     "question": "which vendors have the highest AP invoice amount",
@@ -69,7 +69,7 @@
     "document_type": "ap_invoice",
     "tables_used": ["opch"],
     "embedding_text": "top vendors by ap invoice value supplier wise invoice amount vendor payable spend ranking",
-    "sql": "SELECT cardcode, cardname, SUM(doctotal) AS total_invoice_value FROM opch WHERE COALESCE(canceled, 'N') <> 'Y' GROUP BY cardcode, cardname ORDER BY total_invoice_value DESC LIMIT 10"
+    "sql": "SELECT \"CardCode\", \"CardName\", SUM(\"DocTotal\") AS \"total_invoice_value\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y' GROUP BY \"CardCode\", \"CardName\" ORDER BY \"total_invoice_value\" DESC LIMIT 10"
   },
   {
     "question": "which items have the highest invoiced quantity",
@@ -78,7 +78,7 @@
     "document_type": "ap_invoice",
     "tables_used": ["pch1", "opch"],
     "embedding_text": "top invoiced items purchase invoice quantity item wise billed quantity vendor bill lines",
-    "sql": "SELECT p1.itemcode, p1.dscription, SUM(p1.quantity) AS invoiced_quantity FROM pch1 p1 JOIN opch p0 ON p0.docentry = p1.docentry WHERE COALESCE(p0.canceled, 'N') <> 'Y' GROUP BY p1.itemcode, p1.dscription ORDER BY invoiced_quantity DESC LIMIT 10"
+    "sql": "SELECT p1.\"ItemCode\", p1.\"Dscription\", SUM(p1.\"Quantity\") AS \"invoiced_quantity\" FROM pch1 p1 JOIN opch p0 ON p0.\"DocEntry\" = p1.\"DocEntry\" WHERE COALESCE(p0.\"CANCELED\", 'N') <> 'Y' GROUP BY p1.\"ItemCode\", p1.\"Dscription\" ORDER BY \"invoiced_quantity\" DESC LIMIT 10"
   },
   {
     "question": "what is the total purchase return value",
@@ -87,7 +87,7 @@
     "document_type": "purchase_return",
     "tables_used": ["orpd"],
     "embedding_text": "total purchase return value total vendor returns goods return amount sum returns",
-    "sql": "SELECT SUM(doctotal) AS total_purchase_return_value FROM orpd WHERE COALESCE(canceled, 'N') <> 'Y'"
+    "sql": "SELECT SUM(\"DocTotal\") AS \"total_purchase_return_value\" FROM orpd WHERE COALESCE(\"CANCELED\", 'N') <> 'Y'"
   },
   {
     "question": "which vendors have the highest purchase return amount",
@@ -96,7 +96,7 @@
     "document_type": "purchase_return",
     "tables_used": ["orpd"],
     "embedding_text": "top vendors by purchase return value supplier returns vendor return amount ranking",
-    "sql": "SELECT cardcode, cardname, SUM(doctotal) AS total_return_value FROM orpd WHERE COALESCE(canceled, 'N') <> 'Y' GROUP BY cardcode, cardname ORDER BY total_return_value DESC LIMIT 10"
+    "sql": "SELECT \"CardCode\", \"CardName\", SUM(\"DocTotal\") AS \"total_return_value\" FROM orpd WHERE COALESCE(\"CANCELED\", 'N') <> 'Y' GROUP BY \"CardCode\", \"CardName\" ORDER BY \"total_return_value\" DESC LIMIT 10"
   },
   {
     "question": "which items are returned the most",
@@ -105,7 +105,7 @@
     "document_type": "purchase_return",
     "tables_used": ["rpd1", "orpd"],
     "embedding_text": "top returned items purchase return quantity item wise returned quantity vendor returns",
-    "sql": "SELECT r1.itemcode, r1.dscription, SUM(r1.quantity) AS returned_quantity FROM rpd1 r1 JOIN orpd r0 ON r0.docentry = r1.docentry WHERE COALESCE(r0.canceled, 'N') <> 'Y' GROUP BY r1.itemcode, r1.dscription ORDER BY returned_quantity DESC LIMIT 10"
+    "sql": "SELECT r1.\"ItemCode\", r1.\"Dscription\", SUM(r1.\"Quantity\") AS \"returned_quantity\" FROM rpd1 r1 JOIN orpd r0 ON r0.\"DocEntry\" = r1.\"DocEntry\" WHERE COALESCE(r0.\"CANCELED\", 'N') <> 'Y' GROUP BY r1.\"ItemCode\", r1.\"Dscription\" ORDER BY \"returned_quantity\" DESC LIMIT 10"
   },
   {
     "question": "compare purchase order value and AP invoice value",
@@ -114,6 +114,6 @@
     "document_type": "purchase",
     "tables_used": ["opor", "opch"],
     "embedding_text": "compare purchase order value ap invoice value ordered vs invoiced commitment vs liability",
-    "sql": "SELECT (SELECT SUM(doctotal) FROM opor WHERE COALESCE(canceled, 'N') <> 'Y') AS total_purchase_order_value, (SELECT SUM(doctotal) FROM opch WHERE COALESCE(canceled, 'N') <> 'Y') AS total_ap_invoice_value"
+    "sql": "SELECT (SELECT SUM(\"DocTotal\") FROM opor WHERE COALESCE(\"CANCELED\", 'N') <> 'Y') AS \"total_purchase_order_value\", (SELECT SUM(\"DocTotal\") FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y') AS \"total_ap_invoice_value\""
   }
 ]
