@@ -1,25 +1,12 @@
 from datetime import date
 from decimal import Decimal
-import importlib.util
-from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
 from app.operations.sql_executor import execute_read_only_sql
-from app.operations.purchase_order_text_to_sql import build_purchase_order_fetch_sql
-from app.operations.purchase_rag import build_purchase_rag_fetch_sql, should_use_purchase_rag
+from app.operations.purchase_rag import build_purchase_rag_fetch_sql
 from app.schema.response import PurchaseOrderActionResponse
-
-
-def _load_fetch_checker():
-    checker_path = Path(__file__).with_name("fetch_checker.py")
-    spec = importlib.util.spec_from_file_location("purchase_order_fetch_checker", checker_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load fetch checker from {checker_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _get(row: dict[str, Any], *keys: str):
@@ -220,8 +207,6 @@ def execute(intent, repository):
     del repository
 
     fetch_query = intent.fetchQuery or ""
-    fetch_decision = _load_fetch_checker().decide(fetch_query)
-    use_rag = should_use_purchase_rag(fetch_query)
 
     try:
         query_spec = build_purchase_rag_fetch_sql(fetch_query=fetch_query)
@@ -253,15 +238,10 @@ def execute(intent, repository):
         message=message,
         docEntry=doc_entry,
         data={
-            "fetchRouting": {
-                "subagent": fetch_decision.subagent,
-                "reason": fetch_decision.reason,
-                "conditions": fetch_decision.conditions,
-            },
             "filters": filters,
             "rowCount": count,
             "sql": query_spec["sql"],
-            "strategy": "rag" if use_rag else "deterministic",
+            "strategy": "rag",
             "results": normalized_rows,
         },
     )

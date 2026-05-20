@@ -10,12 +10,6 @@ from app.schema.response import APInvoiceActionResponse
 router = APIRouter()
 
 
-def _resolve_agent_name(action: str) -> str:
-    return {
-        "fetch": "fetch_agent",
-    }.get(action.lower(), "create_agent")
-
-
 @router.post("/parse-and-execute", response_model=APInvoiceActionResponse)
 def parse_and_execute(request: PromptRequest, user: str = Depends(verify_jwt_token)):
     del user

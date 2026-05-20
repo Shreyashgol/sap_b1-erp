@@ -43,12 +43,8 @@ div[data-testid="stSidebar"] { border-right: 1px solid #d7dee8; }
 )
 
 
-def call_backend(
-    api_url: str, endpoint: str, prompt: str, token: str | None
-) -> tuple[int | None, dict[str, Any]]:
+def call_backend(api_url: str, endpoint: str, prompt: str) -> tuple[int | None, dict[str, Any]]:
     headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
     response = requests.post(
         f"{api_url.rstrip('/')}{endpoint}",
         json={"prompt": prompt},
@@ -169,8 +165,7 @@ if prompt:
                 status_code, api_response = call_backend(
                     api_url=api_url,
                     endpoint=endpoint,
-                    prompt=prompt,
-                    token=None,
+                    prompt=prompt
                 )
 
                 # ── Step 3: Generate chat reply ───────────────────────────────

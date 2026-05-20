@@ -23,7 +23,7 @@ Supervisor Agent  ──LangGraph routing──►  Purchase Order Agent
                                         SAP Business One Service Layer
 ```
 
-**LLM stack:** All intent parsing, routing, SQL generation, and chat responses run through the **Groq API** (`llama-3.3-70b-versatile`). No local Ollama required.
+**LLM stack:** All intent parsing, routing, SQL generation, and chat responses run through the **Groq API** (`llama-3.3-70b-versatile`).
 
 **RAG fetch:** Analytical fetch queries (totals, rankings, overdue, etc.) bypass the intent parser and use ChromaDB + `sentence-transformers` to retrieve relevant schema and example SQL, then generate a strict SAP HANA `SELECT` query via Groq. The query is safely executed against an external SAP HANA Database API endpoint.
 
@@ -46,19 +46,15 @@ sap/
 │   ├── chat_response.py      ← Formats the final chatbot reply via Groq
 │   │
 │   ├── agents/
-│   │   ├── supervisor/       ← LangGraph supervisor: routes to correct agent
-│   │   │   ├── supervisor_agent.py
-│   │   │   ├── supervisor_graph.py
-│   │   │   └── fetch_agent.py
-│   │   ├── purchase_order/   ← Create / update / fetch / cancel / close POs
-│   │   ├── ap_invoice/       ← Create / update / fetch / cancel / close / reopen invoices
-│   │   └── purchase_return/  ← Create / update / fetch / cancel / close / reopen returns
+│   │   ├── big_supervisor_agent.py
+│   │   ├── purchase_team/    ← Purchase Order / AP Invoice / Purchase Return agents
+│   │   └── sales_team/       ← Sales Order / AR Invoice / Sales Return agents
 │   │
 │   ├── api/
-│   │   ├── auth.py           ← POST /login → JWT token
 │   │   ├── purchase_orders.py
 │   │   ├── ap_invoices.py
-│   │   └── purchase_returns.py
+│   │   ├── purchase_returns.py
+│   │   └── sales.py
 │   │
 │   ├── crud/                 ← Repository layer (DB reads/writes per document type)
 │   ├── db/                   ← SQLAlchemy models and pool initialisation
@@ -70,12 +66,10 @@ sap/
 │   │   ├── llm_client.py     ← Unified chat_completion() delegates to groq_client
 │   │   ├── sap_client.py     ← SAP Business One Service Layer HTTP client
 │   │   ├── purchase_rag.py   ← ChromaDB RAG store + SQL generation for analytics
-│   │   ├── bulk_upload.py    ← CSV / XLSX bulk purchase order parser
-│   │   ├── document_reader.py← PDF / image OCR via native macOS Swift helper
-│   │   ├── ocr_reader.swift  ← Swift CLI called by document_reader.py for OCR
+│   │   ├── sales_rag.py      ← Sales RAG SQL generation for analytics
 │   │   ├── sql_executor.py   ← Safe SQL fetch executor with timeout
 │   │   ├── error_handler.py  ← SAP error message translator
-│   │   └── utils.py          ← JWT helpers + dynamic agent module loader
+│   │   └── utils.py          ← Guest auth shim + dynamic agent module loader
 │   │
 │   └── rag/
 │       └── data/
@@ -115,7 +109,6 @@ Open `.env` and fill in **at minimum**:
 ```bash
 SAP_AGENTS_DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
 GROQ_API_KEY=gsk_...
-JWT_SECRET=some-random-secret-string
 ```
 
 ### 2. Create a virtual environment and install dependencies
@@ -135,21 +128,15 @@ All variables are read from `.env` at startup via `shared/env.py`.
 |---|---|---|---|
 | `SAP_AGENTS_DATABASE_URL` | ✅ | — | PostgreSQL connection string |
 | `GROQ_API_KEY` | ✅ | — | Groq API key for all LLM calls |
-| `JWT_SECRET` | ✅ | `change-me` | Secret used to sign/verify JWT tokens |
 | `SAP_BASE_URL` | ⬜ | `http://localhost:50000/b1s/v1` | SAP Service Layer base URL |
 | `SAP_USERNAME` | ⬜ | `manager` | SAP login username |
 | `SAP_PASSWORD` | ⬜ | `password` | SAP login password |
 | `SAP_COMPANYDB` | ⬜ | `SBODEMOUS` | SAP company database name |
-| `JWT_ALGORITHM` | ⬜ | `HS256` | JWT signing algorithm |
-| `JWT_EXPIRATION_MINUTES` | ⬜ | `120` | JWT token lifetime |
 | `GROQ_BASE_URL` | ⬜ | `https://api.groq.com/openai/v1` | Groq-compatible endpoint |
 | `GROQ_MODEL` | ⬜ | `llama-3.3-70b-versatile` | Groq model to use |
 | `PURCHASE_RAG_EMBEDDING_MODEL` | ⬜ | `BAAI/bge-base-en-v1.5` | Sentence-transformer model for ChromaDB |
 | `PURCHASE_RAG_PERSIST_DIR` | ⬜ | `.rag_chroma/purchase` | ChromaDB persistence directory |
 | `SQL_QUERY_TIMEOUT` | ⬜ | `30` | Max seconds for a raw SQL fetch |
-| `PURCHASE_ORDER_API_URL` | ⬜ | `http://127.0.0.1:8000/...` | Backend endpoint override |
-| `AP_INVOICE_API_URL` | ⬜ | `http://127.0.0.1:8000/...` | Backend endpoint override |
-| `PURCHASE_RETURN_API_URL` | ⬜ | `http://127.0.0.1:8000/...` | Backend endpoint override |
 
 ---
 
@@ -187,48 +174,6 @@ In the sidebar:
 
 ---
 
-## Installing the Pre-Built `.whl` Package
-
-A pre-built wheel is available in the `dist/` folder of this repository.  
-Use this to install the agent as a proper Python package without cloning the full repo.
-
-### Option A — Install directly from GitHub (recommended)
-
-```bash
-# 1. Create & activate a virtual environment
-python3 -m venv sap-env
-source sap-env/bin/activate          # Windows: sap-env\Scripts\activate
-
-# 2. Download and install the wheel straight from GitHub
-pip install "https://github.com/Shreyashgol/purchase-Team/raw/main/dist/sap_purchase_supervisor_agent-0.1.0-py3-none-any.whl"
-```
-
-### Option B — Clone the repo and install from `dist/`
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/Shreyashgol/purchase-Team.git
-cd purchase-Team
-
-# 2. Create & activate a virtual environment
-python3 -m venv sap-env
-source sap-env/bin/activate          # Windows: sap-env\Scripts\activate
-
-# 3. Install the wheel
-pip install dist/sap_purchase_supervisor_agent-0.1.0-py3-none-any.whl
-```
-
-### Option C — Install all dependencies alongside the wheel
-
-If you also want the full dev dependency set:
-
-```bash
-pip install dist/sap_purchase_supervisor_agent-0.1.0-py3-none-any.whl
-pip install -r requirements.txt
-```
-
----
-
 ## Using the Package After Installation
 
 Once installed the package exposes the FastAPI app and all agents as importable modules.
@@ -237,7 +182,7 @@ Once installed the package exposes the FastAPI app and all agents as importable 
 
 ```bash
 cp .env.example .env
-# Fill in SAP_AGENTS_DATABASE_URL, GROQ_API_KEY, JWT_SECRET (minimum required)
+# Fill in SAP_AGENTS_DATABASE_URL and GROQ_API_KEY (minimum required)
 ```
 
 ### 2. Start the FastAPI backend
@@ -266,7 +211,7 @@ Then open **http://127.0.0.1:8501** in your browser.
 ### 4. Use the agents in your own Python code
 
 ```python
-from app.agents.supervisor.supervisor_agent import execute
+from app.agents.purchase_team.supervisor_agent import execute
 
 # Route any natural-language purchase prompt automatically
 result = execute("Show me the latest 5 purchase orders for vendor V001")
@@ -274,9 +219,9 @@ print(result)
 ```
 
 ```python
-from app.agents.purchase_order.purchase_order_agent import execute as po_execute
+from app.agents.big_supervisor_agent import route
 
-result = po_execute("Create a purchase order for 10 units of item A00001 from vendor V001")
+result = route("Create a purchase order for 10 units of item A00001 from vendor V001")
 print(result)
 ```
 
@@ -289,26 +234,17 @@ If you want to rebuild the wheel from source:
 ```bash
 python3 -m pip install build
 python3 -m build --wheel
-# Output: dist/sap_purchase_supervisor_agent-0.1.0-py3-none-any.whl
+# Output: dist/sap_erp_supervisor_agent-0.1.0-py3-none-any.whl
 ```
 
 ---
 
 ## API Examples
 
-### Get a JWT token
-
-```bash
-curl -X POST "http://127.0.0.1:8000/login?username=user1&password=pass123456"
-```
-
 ### Run a purchase order prompt
 
 ```bash
-TOKEN="paste-token-here"
-
 curl -X POST "http://127.0.0.1:8000/purchase-orders/parse-and-execute" \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Show me the latest 5 purchase orders for vendor V001"}'
 ```
@@ -317,7 +253,6 @@ curl -X POST "http://127.0.0.1:8000/purchase-orders/parse-and-execute" \
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/ap-invoices/parse-and-execute" \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"prompt": "What is the total AP invoice balance due this month?"}'
 ```
@@ -347,7 +282,7 @@ curl -X POST "http://127.0.0.1:8000/purchase-returns/parse-and-execute" \
 | Transparent UI showing full Agent Routing Flow & SQL Generation | ✅ |
 | Fully simulated Dummy SAP Service Layer for local development | ✅ |
 | External SAP HANA Database API integration | ✅ |
-| Groq LLM for all inference (no local Ollama required) | ✅ |
+| Groq LLM for all inference | ✅ |
 
 ---
 
@@ -358,11 +293,11 @@ Quick import and routing smoke-test:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 ./myvenv/bin/python - <<'PY'
 from app.main import app
-from app.agents.supervisor.supervisor_agent import execute
+from app.agents.big_supervisor_agent import route
 print(app.title)
 print(len(app.routes))
-result = execute("show latest purchase orders")
-print(result.data["fetchAgent"]["documentType"])
+result = route("show latest purchase orders")
+print(result["routing_decision"]["documentType"])
 PY
 ```
 

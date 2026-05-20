@@ -3,13 +3,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sap-purchase-supervisor-agent"
+name = "sap-erp-supervisor-agent"
 version = "0.1.0"
-description = "FastAPI backend and Streamlit supervisor UI for SAP Business One purchase workflows."
+description = "FastAPI backend and Streamlit supervisor UI for SAP Business One purchase and sales workflows."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-  { name = "SAP Purchase Supervisor Agent Team" }
+  { name = "SAP ERP Supervisor Agent Team" }
 ]
 dynamic = ["dependencies"]
 

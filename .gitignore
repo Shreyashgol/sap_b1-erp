@@ -18,7 +18,6 @@ __pycache__/
 # ─── Build / packaging artifacts ──────────────────────────────────────────────
 build/
 dist/*
-!dist/*.whl
 *.egg-info/
 *.egg
 

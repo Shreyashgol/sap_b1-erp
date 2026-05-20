@@ -6,41 +6,32 @@ from app.operations.sales_intent_parser import parse_sales_intent
 from app.schema.response import PurchaseTeamRoutingResponse
 
 
-_BIG_SUPERVISOR_SYSTEM = """You are the top-level SAP ERP Supervisor Agent.
+_BIG_SUPERVISOR_SYSTEM = """You are the top-level SAP ERP supervisor.
 
-Choose the team that should handle the user's request.
-- purchase: vendor-side buying documents such as purchase orders, purchase invoices / AP invoices, purchase returns.
-- sales: customer-side selling documents such as sales orders, sales invoices / AR invoices, sales returns, customers, revenue.
+Choose the correct team for the user request:
+- purchase: vendor-side buying documents, purchase orders, AP invoices, purchase invoices, purchase returns.
+- sales: customer-side selling documents, sales orders, AR invoices, sales invoices, sales returns, customers, revenue.
 
-Reply with exactly one lowercase word: purchase or sales.
+Reply with one lowercase word only: purchase or sales.
 """
 
 
 def decide_team(prompt: str) -> str:
-    try:
-        result = groq_chat_completion(
-            [
-                {"role": "system", "content": _BIG_SUPERVISOR_SYSTEM},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0,
-            max_tokens=5,
-            timeout=30,
-            api_key=BIG_SUPERVISOR_GROQ_API_KEY,
-            model=BIG_SUPERVISOR_GROQ_MODEL,
-        )
-        team = result.strip().lower().split()[0]
-        if team in {"purchase", "sales"}:
-            return team
-    except Exception:
-        pass
-
-    lowered = prompt.lower()
-    sales_keywords = (
-        "sales", "sales order", "customer", "client", "ar invoice", "sales invoice",
-        "revenue", "receivable", "return from customer", "sold", "selling",
+    result = groq_chat_completion(
+        [
+            {"role": "system", "content": _BIG_SUPERVISOR_SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        max_tokens=5,
+        timeout=30,
+        api_key=BIG_SUPERVISOR_GROQ_API_KEY,
+        model=BIG_SUPERVISOR_GROQ_MODEL,
     )
-    return "sales" if any(keyword in lowered for keyword in sales_keywords) else "purchase"
+    team = result.strip().lower().split()[0]
+    if team not in {"purchase", "sales"}:
+        raise ValueError(f"Big supervisor returned invalid team: {result}")
+    return team
 
 
 def route(prompt: str) -> dict:
@@ -55,18 +46,9 @@ def route(prompt: str) -> dict:
             "routing_decision": sales_routing_decision(intent),
         }
 
-    try:
-        purchase_response: PurchaseTeamRoutingResponse = purchase_team_execute(prompt)
-        response_data = purchase_response.model_dump()["data"]
-        routing_decision = response_data.get("fetchAgent", {})
-    except Exception:
-        routing_decision = {
-            "action": "fetch",
-            "documentType": "purchase_order",
-            "documentAgent": "purchase_team.purchase_order",
-            "subagent": "purchase_team.purchase_order.fetch_agent",
-            "team": "purchase",
-        }
+    purchase_response: PurchaseTeamRoutingResponse = purchase_team_execute(prompt)
+    response_data = purchase_response.model_dump()["data"]
+    routing_decision = response_data["fetchAgent"]
 
     endpoints = {
         "purchase_order": "/purchase-orders/parse-and-execute",
