@@ -56,11 +56,20 @@
   {
     "question": "how much AP invoice balance is due",
     "intent": "sum AP invoice balance due",
-    "business_context": "balance due is the unpaid payable amount on OPCH",
+    "business_context": "balance due is the unpaid payable amount on OPCH, derived as DocTotal minus PaidToDate",
     "document_type": "ap_invoice",
     "tables_used": ["opch"],
     "embedding_text": "ap invoice balance due unpaid payable outstanding vendor bills pending payment",
-    "sql": "SELECT SUM(COALESCE(\"BalanceDue\", \"DocTotal\" - COALESCE(\"PaidToDate\", 0))) AS \"total_balance_due\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y'"
+    "sql": "SELECT SUM(\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) AS \"total_balance_due\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y'"
+  },
+  {
+    "question": "show me all open AP invoices with pending amounts",
+    "intent": "list open AP invoices with pending amount",
+    "business_context": "open AP invoices are OPCH rows with DocStatus O and active cancellation status; pending amount is DocTotal minus PaidToDate",
+    "document_type": "ap_invoice",
+    "tables_used": ["opch"],
+    "embedding_text": "show list open ap invoices pending amount balance due outstanding unpaid vendor bills payable",
+    "sql": "SELECT \"DocEntry\", \"DocNum\", \"CardCode\", \"CardName\", \"DocDate\", \"DocDueDate\", \"DocTotal\", \"PaidToDate\", (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) AS \"pending_amount\", \"DocStatus\" FROM opch WHERE \"DocStatus\" = 'O' AND COALESCE(\"CANCELED\", 'N') <> 'Y' ORDER BY \"DocDueDate\" ASC LIMIT 50"
   },
   {
     "question": "which vendors have the highest AP invoice amount",
@@ -115,5 +124,59 @@
     "tables_used": ["opor", "opch"],
     "embedding_text": "compare purchase order value ap invoice value ordered vs invoiced commitment vs liability",
     "sql": "SELECT (SELECT SUM(\"DocTotal\") FROM opor WHERE COALESCE(\"CANCELED\", 'N') <> 'Y') AS \"total_purchase_order_value\", (SELECT SUM(\"DocTotal\") FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y') AS \"total_ap_invoice_value\""
+  },
+  {
+    "question": "find AP invoices where invoice amount exceeds purchase order amount by more than 5 percent",
+    "intent": "AP invoice versus purchase order value variance",
+    "business_context": "invoice lines copied from purchase orders carry PCH1 BaseType 22, BaseEntry, and BaseLine; compare AP invoice line value with source PO line value to find overbilling",
+    "document_type": "ap_invoice",
+    "tables_used": ["opch", "pch1", "opor", "por1"],
+    "embedding_text": "ap invoice purchase order amount variance exceeds po amount price variance overbilling invoice amount greater than po amount five percent",
+    "sql": "SELECT p0.\"DocNum\" AS \"invoice_number\", p0.\"CardCode\", p0.\"CardName\", o0.\"DocNum\" AS \"po_number\", CAST(SUM(p1.\"LineTotal\") AS DOUBLE) AS \"invoice_line_total\", CAST(SUM(o1.\"LineTotal\") AS DOUBLE) AS \"po_line_total\", CAST(SUM(p1.\"LineTotal\") - SUM(o1.\"LineTotal\") AS DOUBLE) AS \"variance_amount\", CAST(((SUM(p1.\"LineTotal\") - SUM(o1.\"LineTotal\")) / NULLIF(SUM(o1.\"LineTotal\"), 0)) * 100 AS DOUBLE) AS \"variance_percent\" FROM pch1 p1 JOIN opch p0 ON p0.\"DocEntry\" = p1.\"DocEntry\" JOIN por1 o1 ON o1.\"DocEntry\" = p1.\"BaseEntry\" AND o1.\"LineNum\" = p1.\"BaseLine\" JOIN opor o0 ON o0.\"DocEntry\" = o1.\"DocEntry\" WHERE p1.\"BaseType\" = 22 AND COALESCE(p0.\"CANCELED\", 'N') <> 'Y' GROUP BY p0.\"DocNum\", p0.\"CardCode\", p0.\"CardName\", o0.\"DocNum\" HAVING ((SUM(p1.\"LineTotal\") - SUM(o1.\"LineTotal\")) / NULLIF(SUM(o1.\"LineTotal\"), 0)) > 0.05 ORDER BY \"variance_percent\" DESC LIMIT 50"
+  },
+  {
+    "question": "show AP invoices blocked for payment where amount is still outstanding",
+    "intent": "blocked AP invoices with unpaid payable balance",
+    "business_context": "blocked vendor invoices use OPCH PayBlock and unpaid balance is derived from DocTotal minus PaidToDate",
+    "document_type": "ap_invoice",
+    "tables_used": ["opch"],
+    "embedding_text": "blocked payment ap invoices payment block vendor invoices outstanding payable balance unpaid blocked for payment",
+    "sql": "SELECT \"DocNum\", \"CardCode\", \"CardName\", \"DocDate\", \"DocDueDate\", CAST(\"DocTotal\" AS DOUBLE) AS \"DocTotal\", CAST(\"PaidToDate\" AS DOUBLE) AS \"PaidToDate\", CAST((\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) AS DOUBLE) AS \"BalanceDue\", \"PayBlock\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y' AND \"PayBlock\" = 'Y' AND (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) > 0 ORDER BY \"DocDueDate\" ASC LIMIT 50"
+  },
+  {
+    "question": "list duplicate vendor invoices based on vendor reference, vendor and amount",
+    "intent": "detect duplicate AP invoices",
+    "business_context": "possible duplicate vendor bills share vendor code, vendor reference number NumAtCard, and document total",
+    "document_type": "ap_invoice",
+    "tables_used": ["opch"],
+    "embedding_text": "duplicate vendor invoices same invoice number vendor reference numatcard vendor amount duplicate bills",
+    "sql": "SELECT \"CardCode\", \"CardName\", \"NumAtCard\", CAST(\"DocTotal\" AS DOUBLE) AS \"DocTotal\", COUNT(*) AS \"invoice_count\", MIN(\"DocDate\") AS \"first_invoice_date\", MAX(\"DocDate\") AS \"last_invoice_date\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y' AND \"NumAtCard\" IS NOT NULL GROUP BY \"CardCode\", \"CardName\", \"NumAtCard\", \"DocTotal\" HAVING COUNT(*) > 1 ORDER BY \"invoice_count\" DESC, \"last_invoice_date\" DESC LIMIT 50"
+  },
+  {
+    "question": "generate AP invoice aging by vendor",
+    "intent": "AP invoice aging buckets by vendor",
+    "business_context": "aging uses open unpaid AP invoice balances grouped by vendor and bucketed by days past due",
+    "document_type": "ap_invoice",
+    "tables_used": ["opch"],
+    "embedding_text": "ap invoice aging vendor outstanding payable balance buckets 0 30 31 60 61 90 over 90 days overdue",
+    "sql": "SELECT \"CardCode\", \"CardName\", CAST(SUM(CASE WHEN \"DocDueDate\" >= CURRENT_DATE THEN (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"current_amount\", CAST(SUM(CASE WHEN \"DocDueDate\" < CURRENT_DATE AND DAYS_BETWEEN(\"DocDueDate\", CURRENT_DATE) BETWEEN 1 AND 30 THEN (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_1_30\", CAST(SUM(CASE WHEN DAYS_BETWEEN(\"DocDueDate\", CURRENT_DATE) BETWEEN 31 AND 60 THEN (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_31_60\", CAST(SUM(CASE WHEN DAYS_BETWEEN(\"DocDueDate\", CURRENT_DATE) BETWEEN 61 AND 90 THEN (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_61_90\", CAST(SUM(CASE WHEN DAYS_BETWEEN(\"DocDueDate\", CURRENT_DATE) > 90 THEN (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_over_90\" FROM opch WHERE \"DocStatus\" = 'O' AND COALESCE(\"CANCELED\", 'N') <> 'Y' AND (\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) > 0 GROUP BY \"CardCode\", \"CardName\" ORDER BY \"days_over_90\" DESC, \"days_61_90\" DESC LIMIT 50"
+  },
+  {
+    "question": "find AP invoice tax code mismatches against purchase order lines",
+    "intent": "AP invoice versus purchase order tax code mismatch",
+    "business_context": "compare tax code on AP invoice lines with tax code on the source purchase order line",
+    "document_type": "ap_invoice",
+    "tables_used": ["opch", "pch1", "opor", "por1"],
+    "embedding_text": "tax code mismatch ap invoice purchase order invoice tax code differs po tax code vendor bill tax variance",
+    "sql": "SELECT p0.\"DocNum\" AS \"invoice_number\", o0.\"DocNum\" AS \"po_number\", p0.\"CardCode\", p0.\"CardName\", p1.\"LineNum\" AS \"invoice_line\", p1.\"ItemCode\", p1.\"TaxCode\" AS \"invoice_tax_code\", o1.\"TaxCode\" AS \"po_tax_code\" FROM pch1 p1 JOIN opch p0 ON p0.\"DocEntry\" = p1.\"DocEntry\" JOIN por1 o1 ON o1.\"DocEntry\" = p1.\"BaseEntry\" AND o1.\"LineNum\" = p1.\"BaseLine\" JOIN opor o0 ON o0.\"DocEntry\" = o1.\"DocEntry\" WHERE p1.\"BaseType\" = 22 AND COALESCE(p0.\"CANCELED\", 'N') <> 'Y' AND IFNULL(p1.\"TaxCode\", '') <> IFNULL(o1.\"TaxCode\", '') ORDER BY p0.\"DocDate\" DESC LIMIT 50"
+  },
+  {
+    "question": "show partially paid AP invoices overdue today",
+    "intent": "partially paid overdue AP invoices",
+    "business_context": "partially paid AP invoices have PaidToDate greater than zero but less than DocTotal, and overdue means DocDueDate is before current date",
+    "document_type": "ap_invoice",
+    "tables_used": ["opch"],
+    "embedding_text": "partially paid overdue ap invoices unpaid balance vendor invoices past due partial payment",
+    "sql": "SELECT \"DocNum\", \"CardCode\", \"CardName\", \"DocDueDate\", CAST(\"DocTotal\" AS DOUBLE) AS \"DocTotal\", CAST(\"PaidToDate\" AS DOUBLE) AS \"PaidToDate\", CAST((\"DocTotal\" - IFNULL(\"PaidToDate\", 0)) AS DOUBLE) AS \"BalanceDue\" FROM opch WHERE COALESCE(\"CANCELED\", 'N') <> 'Y' AND \"DocDueDate\" < CURRENT_DATE AND IFNULL(\"PaidToDate\", 0) > 0 AND IFNULL(\"PaidToDate\", 0) < \"DocTotal\" ORDER BY \"DocDueDate\" ASC LIMIT 50"
   }
 ]

@@ -33,7 +33,25 @@
     "document_type": "sales_order",
     "tables_used": ["ORDR"],
     "embedding_text": "top sales orders highest sales order value biggest orders rank order documents order list top 5 orders",
-    "sql": "SELECT T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDate\", T0.\"DocTotal\", T0.\"DocStatus\" FROM ORDR T0 WHERE COALESCE(T0.\"CANCELED\", 'N') <> 'Y' ORDER BY T0.\"DocTotal\" DESC LIMIT 10"
+    "sql": "SELECT T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDate\", CAST(T0.\"DocTotal\" AS DOUBLE) AS \"DocTotal\", T0.\"DocStatus\" FROM ORDR T0 WHERE COALESCE(T0.\"CANCELED\", 'N') <> 'Y' ORDER BY T0.\"DocTotal\" DESC LIMIT 10"
+  },
+  {
+    "question": "show open sales orders for OPPO F27 PRO+ and iPhone 16 Pro Max",
+    "intent": "open sales orders filtered by product names",
+    "business_context": "product names are matched as text through sales order line description and item master item name; keep product names inside single quotes and use lower-case LIKE comparisons",
+    "document_type": "sales_order",
+    "tables_used": ["ORDR", "RDR1", "OITM"],
+    "embedding_text": "open sales orders for product names item names OPPO F27 PRO iPhone 16 Pro Max mobile phone item description item master product name",
+    "sql": "SELECT T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDate\", T0.\"DocDueDate\", T1.\"ItemCode\", T1.\"Dscription\", T2.\"ItemName\", CAST(T1.\"OpenQty\" AS DOUBLE) AS \"OpenQty\", CAST(T1.\"Quantity\" AS DOUBLE) AS \"Quantity\", CAST(T1.\"Price\" AS DOUBLE) AS \"Price\", CAST(T1.\"LineTotal\" AS DOUBLE) AS \"LineTotal\", T1.\"LineStatus\" FROM ORDR T0 JOIN RDR1 T1 ON T1.\"DocEntry\" = T0.\"DocEntry\" LEFT JOIN OITM T2 ON T2.\"ItemCode\" = T1.\"ItemCode\" WHERE T0.\"DocStatus\" = 'O' AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND T1.\"LineStatus\" = 'O' AND (LOWER(IFNULL(T2.\"ItemName\", '')) LIKE '%oppo f27 pro+%' OR LOWER(IFNULL(T1.\"Dscription\", '')) LIKE '%oppo f27 pro+%' OR LOWER(IFNULL(T1.\"ItemCode\", '')) LIKE '%oppo f27 pro+%' OR LOWER(IFNULL(T2.\"ItemName\", '')) LIKE '%iphone 16 pro max%' OR LOWER(IFNULL(T1.\"Dscription\", '')) LIKE '%iphone 16 pro max%' OR LOWER(IFNULL(T1.\"ItemCode\", '')) LIKE '%iphone 16 pro max%') ORDER BY T0.\"DocDate\" DESC, T0.\"DocNum\" DESC LIMIT 50"
+  },
+  {
+    "question": "Show me the top sales order with item-level quantity, price and delivery details",
+    "intent": "top sales order item-level quantity price delivery details",
+    "business_context": "find the highest value non-cancelled sales order and return its RDR1 line quantities, prices, line totals, delivery dates, warehouse, and line status",
+    "document_type": "sales_order",
+    "tables_used": ["ORDR", "RDR1"],
+    "embedding_text": "top sales order item level quantity price delivery details line items ship date warehouse highest value order",
+    "sql": "SELECT T0.\"DocEntry\", T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDate\", CAST(T0.\"DocTotal\" AS DOUBLE) AS \"DocTotal\", T1.\"LineNum\", T1.\"ItemCode\", T1.\"Dscription\", CAST(T1.\"Quantity\" AS DOUBLE) AS \"Quantity\", CAST(T1.\"Price\" AS DOUBLE) AS \"Price\", CAST(T1.\"LineTotal\" AS DOUBLE) AS \"LineTotal\", T1.\"ShipDate\", T1.\"WhsCode\", T1.\"LineStatus\" FROM ORDR T0 JOIN RDR1 T1 ON T1.\"DocEntry\" = T0.\"DocEntry\" WHERE COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND T0.\"DocEntry\" = (SELECT T2.\"DocEntry\" FROM ORDR T2 WHERE COALESCE(T2.\"CANCELED\", 'N') <> 'Y' ORDER BY T2.\"DocTotal\" DESC LIMIT 1) ORDER BY T1.\"LineNum\" ASC"
   },
   {
     "question": "show overdue sales orders",
@@ -42,7 +60,7 @@
     "document_type": "sales_order",
     "tables_used": ["ORDR"],
     "embedding_text": "overdue sales orders delayed so due date passed open orders customer delivery delay",
-    "sql": "SELECT T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDueDate\", T0.\"DocTotal\" FROM ORDR T0 WHERE T0.\"DocStatus\" = 'O' AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND T0.\"DocDueDate\" < CURRENT_DATE ORDER BY T0.\"DocDueDate\" ASC LIMIT 10"
+    "sql": "SELECT T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDueDate\", CAST(T0.\"DocTotal\" AS DOUBLE) AS \"DocTotal\" FROM ORDR T0 WHERE T0.\"DocStatus\" = 'O' AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND T0.\"DocDueDate\" < CURRENT_DATE ORDER BY T0.\"DocDueDate\" ASC LIMIT 10"
   },
   {
     "question": "which products have the most pending sales order quantity",
@@ -51,7 +69,7 @@
     "document_type": "sales_order",
     "tables_used": ["RDR1", "ORDR"],
     "embedding_text": "top pending items sales order open quantity item wise pending so quantity not delivered",
-    "sql": "SELECT T0.\"ItemCode\", T0.\"Dscription\", SUM(T0.\"OpenQty\") AS \"pending_quantity\" FROM RDR1 T0 JOIN ORDR T1 ON T1.\"DocEntry\" = T0.\"DocEntry\" WHERE T1.\"DocStatus\" = 'O' AND COALESCE(T1.\"CANCELED\", 'N') <> 'Y' GROUP BY T0.\"ItemCode\", T0.\"Dscription\" ORDER BY \"pending_quantity\" DESC LIMIT 10"
+    "sql": "SELECT T0.\"ItemCode\", T0.\"Dscription\", CAST(SUM(T0.\"OpenQty\") AS DOUBLE) AS \"pending_quantity\" FROM RDR1 T0 JOIN ORDR T1 ON T1.\"DocEntry\" = T0.\"DocEntry\" WHERE T1.\"DocStatus\" = 'O' AND COALESCE(T1.\"CANCELED\", 'N') <> 'Y' GROUP BY T0.\"ItemCode\", T0.\"Dscription\" ORDER BY \"pending_quantity\" DESC LIMIT 10"
   },
   {
     "question": "what is the total AR invoice amount",
@@ -65,11 +83,11 @@
   {
     "question": "how much AR invoice balance is receivable",
     "intent": "sum AR invoice balance due",
-    "business_context": "balance receivable is the uncollected revenue on OINV",
+    "business_context": "balance receivable is the uncollected revenue on OINV, derived as DocTotal minus PaidToDate",
     "document_type": "ar_invoice",
     "tables_used": ["OINV"],
     "embedding_text": "ar invoice balance receivable unpaid outstanding customer bills pending collection balance due",
-    "sql": "SELECT SUM(COALESCE(T0.\"BalanceDue\", T0.\"DocTotal\" - COALESCE(T0.\"PaidToDate\", 0))) AS \"total_balance_receivable\" FROM OINV T0 WHERE COALESCE(T0.\"CANCELED\", 'N') <> 'Y'"
+    "sql": "SELECT SUM(T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) AS \"total_balance_receivable\" FROM OINV T0 WHERE COALESCE(T0.\"CANCELED\", 'N') <> 'Y'"
   },
   {
     "question": "which customers have bought the most",
@@ -160,5 +178,59 @@
     "tables_used": ["ORDR", "INV1", "OINV"],
     "embedding_text": "ar invoice linked to sales order invoice from sales order base entry base type 17 related invoice fetch linked document",
     "sql": "SELECT DISTINCT T2.\"DocEntry\", T2.\"DocNum\", T2.\"DocDate\", T2.\"CardCode\", T2.\"CardName\", T2.\"DocTotal\" FROM ORDR T0 JOIN INV1 T1 ON T1.\"BaseEntry\" = T0.\"DocEntry\" AND T1.\"BaseType\" = 17 JOIN OINV T2 ON T2.\"DocEntry\" = T1.\"DocEntry\" WHERE T0.\"DocEntry\" = 504632 LIMIT 10"
+  },
+  {
+    "question": "show overdue AR invoices with unpaid balance",
+    "intent": "overdue AR invoices with receivable balance",
+    "business_context": "overdue AR invoices are open customer invoices where due date has passed and DocTotal minus PaidToDate remains positive",
+    "document_type": "ar_invoice",
+    "tables_used": ["OINV"],
+    "embedding_text": "overdue ar invoices unpaid balance receivable outstanding customer invoices past due collections",
+    "sql": "SELECT T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDate\", T0.\"DocDueDate\", CAST(T0.\"DocTotal\" AS DOUBLE) AS \"DocTotal\", CAST(T0.\"PaidToDate\" AS DOUBLE) AS \"PaidToDate\", CAST((T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) AS DOUBLE) AS \"BalanceDue\" FROM OINV T0 WHERE T0.\"DocStatus\" = 'O' AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND T0.\"DocDueDate\" < CURRENT_DATE AND (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) > 0 ORDER BY T0.\"DocDueDate\" ASC LIMIT 50"
+  },
+  {
+    "question": "find customers with more than five unpaid invoices older than 60 days",
+    "intent": "customers with multiple aged unpaid AR invoices",
+    "business_context": "collections risk can be found by grouping old open unpaid AR invoices by customer",
+    "document_type": "ar_invoice",
+    "tables_used": ["OINV"],
+    "embedding_text": "customers more than five unpaid invoices older than sixty days aged receivables collection risk",
+    "sql": "SELECT T0.\"CardCode\", T0.\"CardName\", COUNT(*) AS \"unpaid_invoice_count\", CAST(SUM(T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) AS DOUBLE) AS \"total_balance_due\", MIN(T0.\"DocDueDate\") AS \"oldest_due_date\" FROM OINV T0 WHERE T0.\"DocStatus\" = 'O' AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND DAYS_BETWEEN(T0.\"DocDueDate\", CURRENT_DATE) > 60 AND (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) > 0 GROUP BY T0.\"CardCode\", T0.\"CardName\" HAVING COUNT(*) > 5 ORDER BY \"total_balance_due\" DESC LIMIT 50"
+  },
+  {
+    "question": "list AR invoices where billing amount differs from sales order amount",
+    "intent": "AR invoice versus sales order value variance",
+    "business_context": "invoice lines copied from sales orders carry INV1 BaseType 17, BaseEntry, and BaseLine; compare invoice line value to source sales order line value",
+    "document_type": "ar_invoice",
+    "tables_used": ["OINV", "INV1", "ORDR", "RDR1"],
+    "embedding_text": "ar invoice billing amount differs from sales order amount discount tax freight variance invoice versus order value mismatch",
+    "sql": "SELECT T0.\"DocNum\" AS \"invoice_number\", T3.\"DocNum\" AS \"sales_order_number\", T0.\"CardCode\", T0.\"CardName\", CAST(SUM(T1.\"LineTotal\") AS DOUBLE) AS \"invoice_line_total\", CAST(SUM(T2.\"LineTotal\") AS DOUBLE) AS \"sales_order_line_total\", CAST(SUM(T1.\"LineTotal\") - SUM(T2.\"LineTotal\") AS DOUBLE) AS \"variance_amount\", CAST(((SUM(T1.\"LineTotal\") - SUM(T2.\"LineTotal\")) / NULLIF(SUM(T2.\"LineTotal\"), 0)) * 100 AS DOUBLE) AS \"variance_percent\" FROM OINV T0 JOIN INV1 T1 ON T1.\"DocEntry\" = T0.\"DocEntry\" JOIN RDR1 T2 ON T2.\"DocEntry\" = T1.\"BaseEntry\" AND T2.\"LineNum\" = T1.\"BaseLine\" JOIN ORDR T3 ON T3.\"DocEntry\" = T2.\"DocEntry\" WHERE T1.\"BaseType\" = 17 AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' GROUP BY T0.\"DocNum\", T3.\"DocNum\", T0.\"CardCode\", T0.\"CardName\" HAVING ABS(SUM(T1.\"LineTotal\") - SUM(T2.\"LineTotal\")) > 0 ORDER BY ABS(\"variance_amount\") DESC LIMIT 50"
+  },
+  {
+    "question": "show AR invoice aging by customer",
+    "intent": "AR invoice aging buckets by customer",
+    "business_context": "receivables aging groups open unpaid AR invoice balances into due-date buckets by customer",
+    "document_type": "ar_invoice",
+    "tables_used": ["OINV"],
+    "embedding_text": "ar invoice aging customer receivable outstanding balance buckets current 1 30 31 60 61 90 over 90 days overdue",
+    "sql": "SELECT T0.\"CardCode\", T0.\"CardName\", CAST(SUM(CASE WHEN T0.\"DocDueDate\" >= CURRENT_DATE THEN (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"current_amount\", CAST(SUM(CASE WHEN T0.\"DocDueDate\" < CURRENT_DATE AND DAYS_BETWEEN(T0.\"DocDueDate\", CURRENT_DATE) BETWEEN 1 AND 30 THEN (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_1_30\", CAST(SUM(CASE WHEN DAYS_BETWEEN(T0.\"DocDueDate\", CURRENT_DATE) BETWEEN 31 AND 60 THEN (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_31_60\", CAST(SUM(CASE WHEN DAYS_BETWEEN(T0.\"DocDueDate\", CURRENT_DATE) BETWEEN 61 AND 90 THEN (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_61_90\", CAST(SUM(CASE WHEN DAYS_BETWEEN(T0.\"DocDueDate\", CURRENT_DATE) > 90 THEN (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) ELSE 0 END) AS DOUBLE) AS \"days_over_90\" FROM OINV T0 WHERE T0.\"DocStatus\" = 'O' AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND (T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) > 0 GROUP BY T0.\"CardCode\", T0.\"CardName\" ORDER BY \"days_over_90\" DESC, \"days_61_90\" DESC LIMIT 50"
+  },
+  {
+    "question": "show partially paid AR invoices",
+    "intent": "partially paid AR invoices",
+    "business_context": "partially paid customer invoices have PaidToDate greater than zero but less than DocTotal",
+    "document_type": "ar_invoice",
+    "tables_used": ["OINV"],
+    "embedding_text": "partially paid ar invoices customer invoice payment received balance pending collection",
+    "sql": "SELECT T0.\"DocNum\", T0.\"CardCode\", T0.\"CardName\", T0.\"DocDueDate\", CAST(T0.\"DocTotal\" AS DOUBLE) AS \"DocTotal\", CAST(T0.\"PaidToDate\" AS DOUBLE) AS \"PaidToDate\", CAST((T0.\"DocTotal\" - IFNULL(T0.\"PaidToDate\", 0)) AS DOUBLE) AS \"BalanceDue\" FROM OINV T0 WHERE COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND IFNULL(T0.\"PaidToDate\", 0) > 0 AND IFNULL(T0.\"PaidToDate\", 0) < T0.\"DocTotal\" ORDER BY T0.\"DocDueDate\" ASC LIMIT 50"
+  },
+  {
+    "question": "find AR invoice tax code mismatches against sales order lines",
+    "intent": "AR invoice versus sales order tax code mismatch",
+    "business_context": "compare tax code on AR invoice lines with tax code on the source sales order line",
+    "document_type": "ar_invoice",
+    "tables_used": ["OINV", "INV1", "ORDR", "RDR1"],
+    "embedding_text": "tax code mismatch ar invoice sales order invoice tax code differs sales order tax code billing tax variance",
+    "sql": "SELECT T0.\"DocNum\" AS \"invoice_number\", T3.\"DocNum\" AS \"sales_order_number\", T0.\"CardCode\", T0.\"CardName\", T1.\"LineNum\" AS \"invoice_line\", T1.\"ItemCode\", T1.\"TaxCode\" AS \"invoice_tax_code\", T2.\"TaxCode\" AS \"sales_order_tax_code\" FROM OINV T0 JOIN INV1 T1 ON T1.\"DocEntry\" = T0.\"DocEntry\" JOIN RDR1 T2 ON T2.\"DocEntry\" = T1.\"BaseEntry\" AND T2.\"LineNum\" = T1.\"BaseLine\" JOIN ORDR T3 ON T3.\"DocEntry\" = T2.\"DocEntry\" WHERE T1.\"BaseType\" = 17 AND COALESCE(T0.\"CANCELED\", 'N') <> 'Y' AND IFNULL(T1.\"TaxCode\", '') <> IFNULL(T2.\"TaxCode\", '') ORDER BY T0.\"DocDate\" DESC LIMIT 50"
   }
 ]

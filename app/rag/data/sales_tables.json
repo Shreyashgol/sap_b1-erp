@@ -49,9 +49,9 @@
   },
   "OINV": {
     "description": "AR Invoice (sales invoice) header table representing finalized customer billing.",
-    "business_meaning": "sales revenue, customer billing, invoiced amount, balance receivable, paid amount, sales invoice analysis",
-    "embedding_text": "ar invoice sales invoice customer invoice revenue billing invoiced amount balance due receivable paid amount tax invoice count",
-    "business_terms": ["ar invoice", "sales invoice", "customer invoice", "receivable", "balance receivable"],
+    "business_meaning": "sales revenue, customer billing, invoiced amount, balance receivable derived from DocTotal minus PaidToDate, paid amount, sales invoice analysis",
+    "embedding_text": "ar invoice sales invoice customer invoice revenue billing invoiced amount balance due receivable paid amount pending collection outstanding unpaid tax invoice count",
+    "business_terms": ["ar invoice", "sales invoice", "customer invoice", "receivable", "balance receivable", "pending collection", "outstanding amount"],
     "columns": {
       "\"DocEntry\"": "internal unique id for the AR invoice",
       "\"DocNum\"": "AR invoice number shown to users",
@@ -62,8 +62,7 @@
       "\"DocTotal\"": "total invoice amount",
       "\"VatSum\"": "tax amount",
       "\"DiscSum\"": "discount amount",
-      "\"PaidToDate\"": "amount collected to date",
-      "\"BalanceDue\"": "remaining receivable balance",
+      "\"PaidToDate\"": "amount collected to date; derive remaining receivable balance as \"DocTotal\" - IFNULL(\"PaidToDate\", 0)",
       "\"DocStatus\"": "status, O for open and C for closed",
       "\"CANCELED\"": "Y when invoice is cancelled"
     },
@@ -86,8 +85,13 @@
       "\"Price\"": "unit price",
       "\"LineTotal\"": "line value",
       "\"Currency\"": "line currency",
+      "\"VatSum\"": "tax amount on the invoice line when available",
+      "\"TaxCode\"": "tax code on the invoice line when available",
       "\"WhsCode\"": "warehouse code",
-      "\"LineStatus\"": "line status, O for open and C for closed"
+      "\"LineStatus\"": "line status, O for open and C for closed",
+      "\"BaseType\"": "base document type; 17 means sales order",
+      "\"BaseEntry\"": "base sales document entry",
+      "\"BaseLine\"": "base sales document line"
     },
     "joins": [
       { "table": "OINV", "on": "OINV.\"DocEntry\" = INV1.\"DocEntry\"" },

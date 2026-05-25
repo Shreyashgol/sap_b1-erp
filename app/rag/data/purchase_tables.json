@@ -53,9 +53,9 @@
   },
   "opch": {
     "description": "AP purchase invoice header table representing finalized vendor bills.",
-    "business_meaning": "actual vendor invoice liability, purchase invoice value, payable amount, balance due, paid invoice analysis",
-    "embedding_text": "ap invoice purchase invoice vendor bill supplier bill payable liability invoice amount paid balance due tax invoice count invoice total",
-    "business_terms": ["ap invoice", "purchase invoice", "vendor invoice", "bill", "payable", "balance due"],
+    "business_meaning": "actual vendor invoice liability, purchase invoice value, payable amount, balance due derived from DocTotal minus PaidToDate, paid invoice analysis",
+    "embedding_text": "ap invoice purchase invoice open ap invoices vendor bill supplier bill payable liability invoice amount paid balance due pending amount pending amounts outstanding unpaid tax invoice count invoice total",
+    "business_terms": ["ap invoice", "purchase invoice", "vendor invoice", "bill", "payable", "balance due", "pending amount", "open invoice", "outstanding amount"],
     "columns": {
       "\"DocEntry\"": "internal unique id for the AP invoice",
       "\"DocNum\"": "AP invoice number shown to users",
@@ -69,8 +69,10 @@
       "\"DocTotal\"": "total invoice amount",
       "\"VatSum\"": "tax amount",
       "\"DiscSum\"": "discount amount",
-      "\"PaidToDate\"": "amount paid to date",
-      "\"BalanceDue\"": "remaining payable balance",
+      "\"PaidToDate\"": "amount paid to date; derive remaining payable balance as \"DocTotal\" - IFNULL(\"PaidToDate\", 0)",
+      "\"PayBlock\"": "payment block flag; Y means blocked for payment",
+      "\"GroupNum\"": "payment terms code used on the invoice when available",
+      "\"Attachment\"": "invoice attachment reference when available",
       "\"DocStatus\"": "invoice status, O for open and C for closed",
       "\"CANCELED\"": "Y when invoice is cancelled",
       "\"Comments\"": "free text remarks"
@@ -100,6 +102,7 @@
       "\"TaxCode\"": "tax code",
       "\"WhsCode\"": "warehouse code",
       "\"LineStatus\"": "line status, O for open and C for closed",
+      "\"BaseType\"": "base document type; 22 means purchase order",
       "\"BaseEntry\"": "base purchase document entry",
       "\"BaseLine\"": "base purchase document line"
     },

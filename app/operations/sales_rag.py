@@ -16,6 +16,7 @@ from app.config import (
     SALES_SQL_CLAUDE_MODEL,
 )
 from app.operations.claude_client import claude_chat_completion
+from app.operations.sql_numeric_safety import make_numeric_select_json_safe
 
 RAG_ROOT = Path(__file__).resolve().parents[1] / "rag"
 DATA_DIR = RAG_ROOT / "data"
@@ -84,6 +85,18 @@ def _stable_id(prefix: str, value: str) -> str:
     return f"{prefix}_{digest}"
 
 
+def _content_hash(content: str, embedding_text: str, metadata: dict[str, Any]) -> str:
+    payload = json.dumps(
+        {
+            "content": content,
+            "embedding_text": embedding_text,
+            "metadata": metadata,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
 def _table_documents() -> list[RagDocument]:
     data = _load_json(SALES_TABLES_PATH)
     documents: list[RagDocument] = []
@@ -98,16 +111,17 @@ Columns:
 {columns}
 Joins:
 {joins}""".strip()
+        metadata = {
+            "type": "schema",
+            "table_name": table_name,
+            "embedding_text": table_data.get("embedding_text", ""),
+        }
         documents.append(
             RagDocument(
                 id=_stable_id("sales_schema", table_name),
                 content=content,
                 embedding_text=table_data.get("embedding_text", ""),
-                metadata={
-                    "type": "schema",
-                    "table_name": table_name,
-                    "embedding_text": table_data.get("embedding_text", ""),
-                },
+                metadata={**metadata, "content_hash": _content_hash(content, table_data.get("embedding_text", ""), metadata)},
             )
         )
     return documents
@@ -122,19 +136,20 @@ Intent: {entry.get("intent", "")}
 Business Context: {entry.get("business_context", "")}
 Tables Used: {", ".join(entry.get("tables_used", []))}
 SQL Pattern: {entry.get("sql", "")}""".strip()
+        metadata = {
+            "type": "query",
+            "intent": entry.get("intent", ""),
+            "document_type": entry.get("document_type", ""),
+            "tables_used": ",".join(entry.get("tables_used", [])),
+            "sql": entry.get("sql", ""),
+            "embedding_text": entry.get("embedding_text", ""),
+        }
         documents.append(
             RagDocument(
                 id=_stable_id("sales_query", f"{index}:{entry.get('question', '')}"),
                 content=content,
                 embedding_text=entry.get("embedding_text", ""),
-                metadata={
-                    "type": "query",
-                    "intent": entry.get("intent", ""),
-                    "document_type": entry.get("document_type", ""),
-                    "tables_used": ",".join(entry.get("tables_used", [])),
-                    "sql": entry.get("sql", ""),
-                    "embedding_text": entry.get("embedding_text", ""),
-                },
+                metadata={**metadata, "content_hash": _content_hash(content, entry.get("embedding_text", ""), metadata)},
             )
         )
     return documents
@@ -163,7 +178,14 @@ class _SalesRagStore:
     def _ensure_indexed(self, collection, documents: list[RagDocument]):
         existing_count = collection.count()
         if existing_count == len(documents):
-            return
+            existing = collection.get(include=["metadatas"])
+            existing_hashes = {
+                doc_id: (metadata or {}).get("content_hash")
+                for doc_id, metadata in zip(existing.get("ids") or [], existing.get("metadatas") or [])
+            }
+            desired_hashes = {document.id: document.metadata.get("content_hash") for document in documents}
+            if existing_hashes == desired_hashes:
+                return
         if existing_count:
             existing = collection.get(include=[])
             ids = existing.get("ids") or []
@@ -246,6 +268,20 @@ def _validate_generated_sql(sql: str):
     unknown_tables = {table.upper() for table in _referenced_tables(sql)} - ALLOWED_SALES_TABLES
     if unknown_tables:
         raise ValueError(f"RAG generated SQL with unsupported tables: {', '.join(sorted(unknown_tables))}")
+    if _uses_balance_due_as_physical_column(sql):
+        raise ValueError(
+            'RAG generated SQL with unsupported physical column "BalanceDue"; '
+            'derive invoice balance as ("DocTotal" - IFNULL("PaidToDate", 0))'
+        )
+
+
+def _uses_balance_due_as_physical_column(sql: str) -> bool:
+    for match in re.finditer(r'(?:\b[a-z][a-z0-9_]*\.)?"BalanceDue"', sql, flags=re.IGNORECASE):
+        preceding = sql[max(0, match.start() - 8) : match.start()].lower()
+        if re.search(r"\bas\s+$", preceding):
+            continue
+        return True
+    return False
 
 
 SALES_SQL_SYSTEM = """You are a SAP HANA SQL expert for SAP Business One SALES queries.
@@ -258,10 +294,14 @@ STRICT RULES:
 - Always alias tables: FROM ORDR T0, JOIN OCRD T1 ON ...
 - Use alias when referencing columns: T0."DocTotal", T1."CardName"
 - ALWAYS wrap EVERY column name in double quotes: T0."DocEntry" WITHOUT EXCEPTION
+- Cast final selected numeric measures to DOUBLE so HANA JSON responses contain numbers, not empty objects.
+  This applies to amount, quantity, price, total, tax, discount, and balance expressions.
+  Example: CAST(T1."Quantity" AS DOUBLE) AS "Quantity", CAST(T1."Price" AS DOUBLE) AS "Price".
 - Use LIMIT N for row limiting, not TOP
 - Use IFNULL() not ISNULL()
 - Use CURRENT_DATE for today's date
 - Use COALESCE for null handling
+- Use IFNULL inside arithmetic and numeric balance expressions.
 - Never use semicolons
 - Never use CTEs unless absolutely required
 - Never use wildcard SELECT * unless explicitly requested.
@@ -284,8 +324,17 @@ SAP SALES TABLES:
 BUSINESS RULES:
 - Sales orders represent customer commitments and pipeline.
 - AR invoices represent finalized customer billing and revenue.
+- For AR invoice pending collection, outstanding amount, unpaid amount, balance receivable, or balance due,
+  always use (T0."DocTotal" - IFNULL(T0."PaidToDate", 0)) with the correct table alias; never select or filter on a physical "BalanceDue" column.
 - Sales returns represent returned goods or credit against customer sales.
 - Join header and row tables using header."DocEntry" = row."DocEntry".
+- AR invoice lines based on sales orders use INV1."BaseType" = 17, INV1."BaseEntry" = ORDR."DocEntry",
+  and INV1."BaseLine" = RDR1."LineNum".
+- Sales-order-vs-invoice variance analysis should compare INV1 and RDR1 line values, quantities, prices, discounts, or tax codes.
+- Customer balance is available on OCRD."Balance"; do not invent credit-limit, payment-reminder, clearing, or GL-account columns unless they appear in schema context.
+- Product names such as OPPO F27 PRO+ or iPhone 16 Pro Max are text values, not numbers.
+- When the user gives product names instead of item codes, join OITM and search with text predicates on OITM."ItemName",
+  line."Dscription", and line."ItemCode"; always single-quote string literals and never compare text product names to numeric columns.
 - Use ORDER BY for ranked outputs.
 - Prefer LIMIT 10 for ranked/list queries unless user specifies another limit.
 - Ensure all non-aggregated selected columns are included in GROUP BY.
@@ -332,7 +381,7 @@ def build_sales_rag_fetch_sql(fetch_query: str) -> dict[str, Any]:
         api_key=SALES_SQL_CLAUDE_API_KEY,
         model=SALES_SQL_CLAUDE_MODEL,
     )
-    sql = _extract_sql(raw)
+    sql = make_numeric_select_json_safe(_extract_sql(raw))
     _validate_generated_sql(sql)
     return {
         "sql": sql,

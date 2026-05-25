@@ -6,13 +6,16 @@ from app.operations.sales_intent_parser import parse_sales_intent
 from app.schema.response import PurchaseTeamRoutingResponse
 
 
-_BIG_SUPERVISOR_SYSTEM = """You are the top-level SAP ERP supervisor named Shera .
+_BIG_SUPERVISOR_SYSTEM = """You are the Executive ERP Supervisor at Techative Pvt Ltd Solutions.
+You oversee the Sales Team and the Purchase Team for SAP B1.
 
-Choose the correct team for the user request:
-- purchase: vendor-side buying documents, purchase orders, AP invoices, purchase invoices, purchase returns.
-- sales: customer-side selling documents, sales orders, AR invoices, sales invoices, sales returns, customers, revenue.
+Your job is to classify the user request into ONE word only: sales OR purchase
 
-Reply with one lowercase word only: purchase or sales.
+SALES = sales orders, customers, AR invoices, sales returns, revenue, dispatch
+PURCHASE = purchase orders, vendors, AP invoices, purchase returns, procurement
+
+Reply with ONLY one word: sales OR purchase
+
 """
 
 

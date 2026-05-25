@@ -13,6 +13,7 @@ from app.config import (
     HANA_SQL_API_URL,
     SQL_QUERY_TIMEOUT,
 )
+from app.operations.sql_numeric_safety import make_numeric_select_json_safe, normalize_result_rows
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,16 @@ def _raise_hana_http_error(response: requests.Response):
         response_message = safe_body
     lowered_message = response_message.lower()
 
-    if "sql syntax error" in lowered_message or "invalid column" in lowered_message or "invalid table" in lowered_message:
+    sql_error_markers = (
+        "sql syntax error",
+        "invalid column",
+        "invalid table",
+        "invalid number",
+        "cannot convert",
+        "data type",
+        "sql error",
+    )
+    if any(marker in lowered_message for marker in sql_error_markers):
         raise ValueError(
             "HANA SQL API rejected the generated SELECT query. "
             f"Reason: {response_message or safe_body}"
@@ -88,7 +98,7 @@ def execute_read_only_sql(sql: str, params: dict[str, Any] | None = None) -> lis
     if params:
         logger.warning(f"execute_read_only_sql called with params {params}, but HANA GET API does not support parameterized SQL directly.")
 
-    normalized = sql.strip()
+    normalized = make_numeric_select_json_safe(sql.strip())
     if not normalized.lower().startswith("select"):
         raise ValueError("Only SELECT queries are allowed for fetch operations")
 
@@ -103,7 +113,7 @@ def execute_read_only_sql(sql: str, params: dict[str, Any] | None = None) -> lis
         if response.status_code >= 400:
             _raise_hana_http_error(response)
         data = response.json()
-        return _rows_from_response(data)
+        return normalize_result_rows(_rows_from_response(data))
             
     except requests.exceptions.ConnectTimeout as e:
         logger.error("Timed out connecting to HANA SQL API at %s: %s", HANA_SQL_API_URL, e)

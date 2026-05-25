@@ -15,6 +15,7 @@ from app.config import (
     PURCHASE_TEAM_CLAUDE_MODEL,
 )
 from app.operations.claude_client import claude_chat_completion
+from app.operations.sql_numeric_safety import make_numeric_select_json_safe
 
 
 RAG_ROOT = Path(__file__).resolve().parents[1] / "rag"
@@ -47,6 +48,16 @@ ANALYTIC_PATTERNS = (
     r"\btoday\b",
     r"\byesterday\b",
     r"\boverdue\b",
+    r"\baging\b",
+    r"\bageing\b",
+    r"\bvariance\b",
+    r"\bmismatch\b",
+    r"\bduplicate\b",
+    r"\bpartial(?:ly)?\s+paid\b",
+    r"\bpayment\s+block\b",
+    r"\bblocked\b",
+    r"\btax\s+code\b",
+    r"\bwithout\s+(?:a\s+)?(?:po|purchase\s+order)\b",
 )
 
 ALLOWED_RAG_TABLES = {"opor", "por1", "opch", "pch1", "orpd", "rpd1"}
@@ -118,6 +129,18 @@ def _stable_id(prefix: str, value: str) -> str:
     return f"{prefix}_{digest}"
 
 
+def _content_hash(content: str, embedding_text: str, metadata: dict[str, Any]) -> str:
+    payload = json.dumps(
+        {
+            "content": content,
+            "embedding_text": embedding_text,
+            "metadata": metadata,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
 def _table_documents() -> list[RagDocument]:
     data = _load_json(TABLES_PATH)
     documents: list[RagDocument] = []
@@ -132,16 +155,17 @@ Columns:
 {columns}
 Joins:
 {joins}""".strip()
+        metadata = {
+            "type": "schema",
+            "table_name": table_name,
+            "embedding_text": table_data.get("embedding_text", ""),
+        }
         documents.append(
             RagDocument(
                 id=_stable_id("schema", table_name),
                 content=content,
                 embedding_text=table_data.get("embedding_text", ""),
-                metadata={
-                    "type": "schema",
-                    "table_name": table_name,
-                    "embedding_text": table_data.get("embedding_text", ""),
-                },
+                metadata={**metadata, "content_hash": _content_hash(content, table_data.get("embedding_text", ""), metadata)},
             )
         )
     return documents
@@ -156,19 +180,20 @@ Intent: {entry.get("intent", "")}
 Business Context: {entry.get("business_context", "")}
 Tables Used: {", ".join(entry.get("tables_used", []))}
 SQL Pattern: {entry.get("sql", "")}""".strip()
+        metadata = {
+            "type": "query",
+            "intent": entry.get("intent", ""),
+            "document_type": entry.get("document_type", ""),
+            "tables_used": ",".join(entry.get("tables_used", [])),
+            "sql": entry.get("sql", ""),
+            "embedding_text": entry.get("embedding_text", ""),
+        }
         documents.append(
             RagDocument(
                 id=_stable_id("query", f"{index}:{entry.get('question', '')}"),
                 content=content,
                 embedding_text=entry.get("embedding_text", ""),
-                metadata={
-                    "type": "query",
-                    "intent": entry.get("intent", ""),
-                    "document_type": entry.get("document_type", ""),
-                    "tables_used": ",".join(entry.get("tables_used", [])),
-                    "sql": entry.get("sql", ""),
-                    "embedding_text": entry.get("embedding_text", ""),
-                },
+                metadata={**metadata, "content_hash": _content_hash(content, entry.get("embedding_text", ""), metadata)},
             )
         )
     return documents
@@ -199,7 +224,14 @@ class _PurchaseRagStore:
     def _ensure_indexed(self, collection, documents: list[RagDocument]):
         existing_count = collection.count()
         if existing_count == len(documents):
-            return
+            existing = collection.get(include=["metadatas"])
+            existing_hashes = {
+                doc_id: (metadata or {}).get("content_hash")
+                for doc_id, metadata in zip(existing.get("ids") or [], existing.get("metadatas") or [])
+            }
+            desired_hashes = {document.id: document.metadata.get("content_hash") for document in documents}
+            if existing_hashes == desired_hashes:
+                return
 
         if existing_count:
             existing = collection.get(include=[])
@@ -294,6 +326,20 @@ def _validate_generated_sql(sql: str):
     unknown_tables = _referenced_tables(sql) - ALLOWED_RAG_TABLES
     if unknown_tables:
         raise ValueError(f"RAG generated SQL with unsupported tables: {', '.join(sorted(unknown_tables))}")
+    if _uses_balance_due_as_physical_column(sql):
+        raise ValueError(
+            'RAG generated SQL with unsupported physical column "BalanceDue"; '
+            'derive AP invoice balance as ("DocTotal" - IFNULL("PaidToDate", 0))'
+        )
+
+
+def _uses_balance_due_as_physical_column(sql: str) -> bool:
+    for match in re.finditer(r'(?:\b[a-z][a-z0-9_]*\.)?"BalanceDue"', sql, flags=re.IGNORECASE):
+        preceding = sql[max(0, match.start() - 8) : match.start()].lower()
+        if re.search(r"\bas\s+$", preceding):
+            continue
+        return True
+    return False
 
 
 def _build_sql_prompt(question: str, retrieval: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
@@ -336,6 +382,9 @@ SAP HANA SQL RULES:
 - Do not use PostgreSQL-only operators like ILIKE.
 - Use LIKE for text matching.
 - Use COALESCE or IFNULL for null handling.
+- Cast final selected numeric measures to DOUBLE so HANA JSON responses contain numbers, not empty objects.
+  This applies to amount, quantity, price, total, tax, discount, paid, pending, balance, and rate expressions.
+  Example: CAST(p1."Quantity" AS DOUBLE) AS "Quantity", CAST(p1."Price" AS DOUBLE) AS "Price".
 - Ensure all non-aggregated selected columns are included in GROUP BY.
 
 SAP BUSINESS ONE CONTEXT:
@@ -346,6 +395,9 @@ SAP BUSINESS ONE CONTEXT:
 - AP Invoices:
   Header table: opch
   Row table: pch1
+  Balance due / pending amount is NOT a physical "BalanceDue" column.
+  Derive it as ("DocTotal" - IFNULL("PaidToDate", 0)).
+  You may alias that expression as "BalanceDue" or "pending_amount".
 
 - Purchase Returns:
   Header table: orpd
@@ -360,6 +412,12 @@ STATUS RULES:
 BUSINESS RULES:
 - Purchase orders represent procurement commitments.
 - AP invoices represent actual vendor liabilities.
+- For AP invoice pending amount, outstanding amount, unpaid amount, payable balance, or balance due,
+  always use ("DocTotal" - IFNULL("PaidToDate", 0)); never select or filter on a physical "BalanceDue" column.
+- AP invoice payment block is represented by opch."PayBlock" = 'Y' when that column is available.
+- AP invoice lines based on purchase orders use pch1."BaseType" = 22, pch1."BaseEntry" = por1."DocEntry",
+  and pch1."BaseLine" = por1."LineNum".
+- PO-vs-invoice variance analysis should compare pch1 and por1 line values, quantities, prices, or tax codes.
 - Purchase returns represent returns to vendors.
 - Join header and row tables using:
   header."DocEntry" = row."DocEntry"
@@ -433,7 +491,7 @@ def build_purchase_rag_fetch_sql(fetch_query: str) -> dict[str, Any]:
         api_key=PURCHASE_TEAM_CLAUDE_API_KEY,
         model=PURCHASE_TEAM_CLAUDE_MODEL,
     )
-    sql = _extract_sql(raw_sql)
+    sql = make_numeric_select_json_safe(_extract_sql(raw_sql))
     _validate_generated_sql(sql)
 
     return {
