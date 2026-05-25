@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, CornerDownLeft } from 'lucide-react';
+import { Send, CornerDownLeft, Square } from 'lucide-react';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
+  onStop: () => void;
   isLoading: boolean;
 }
 
-export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
+export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, onStop, isLoading }) => {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -42,24 +43,32 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }
         onKeyDown={handleKeyDown}
         placeholder="Ask Shera anything: e.g. Show top 5 sales orders | Show overdue purchase orders"
         style={styles.textarea}
-        disabled={isLoading}
+        disabled={false}
       />
       <div style={styles.actionRow}>
         <div style={styles.metaHint}>
           <CornerDownLeft size={12} color="#475569" />
           <span>Press Enter to send</span>
         </div>
-        <button
-          type="submit"
-          disabled={!text.trim() || isLoading}
-          style={{
-            ...styles.sendButton,
-            ...(!text.trim() || isLoading ? styles.sendButtonDisabled : {}),
-          }}
-        >
-          <Send size={16} />
-          <span>{isLoading ? 'Processing...' : 'Send'}</span>
-        </button>
+        {isLoading ? (
+          <button type="button" onClick={onStop} style={styles.stopButton} title="Stop response">
+            <Square size={13} fill="currentColor" />
+            <span>Stop</span>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            style={{
+              ...styles.sendButton,
+              ...(!text.trim() ? styles.sendButtonDisabled : {}),
+            }}
+            title="Send message"
+          >
+            <Send size={16} />
+            <span>Send</span>
+          </button>
+        )}
       </div>
     </form>
   );
@@ -120,5 +129,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#64748b',
     boxShadow: 'none',
     cursor: 'not-allowed',
+  },
+  stopButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    backgroundColor: '#f8fafc',
+    color: '#0f172a',
+    padding: '6px 14px',
+    borderRadius: '8px',
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    boxShadow: '0 2px 8px rgba(248, 250, 252, 0.18)',
   },
 };

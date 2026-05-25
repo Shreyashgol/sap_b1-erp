@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { Bot, User, CornerDownRight } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import { Bot, User, CornerDownRight, Copy, RotateCcw, Pencil, Check, X } from 'lucide-react';
 import { DataChart } from './DataChart';
 import { DetailsInspector } from './DetailsInspector';
 
@@ -14,15 +14,22 @@ interface Message {
 interface ChatWindowProps {
   messages: Message[];
   onSuggestionClick: (suggestion: string) => void;
+  onEditMessage: (index: number, message: string) => void;
+  onRetryMessage: (index: number) => void;
   isLoading: boolean;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
   onSuggestionClick,
+  onEditMessage,
+  onRetryMessage,
   isLoading,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,6 +49,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       .map((line) => line.replace(/^[-*]\s*/, '').trim());
 
     return { mainBody, suggestions };
+  };
+
+  const beginEdit = (index: number, content: string) => {
+    setEditingIndex(index);
+    setEditingText(content);
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    setEditingText('');
+  };
+
+  const submitEdit = (index: number) => {
+    const nextText = editingText.trim();
+    if (!nextText) return;
+    cancelEdit();
+    onEditMessage(index, nextText);
+  };
+
+  const copyMessage = async (index: number, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedIndex(index);
+      window.setTimeout(() => setCopiedIndex(null), 1400);
+    } catch {
+      setCopiedIndex(null);
+    }
   };
 
   const renderLine = (line: string, idx: number) => {
@@ -277,8 +311,75 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                     }}
                   >
-                    {renderContentText(mainBody)}
+                    {editingIndex === index ? (
+                      <div style={styles.editBox}>
+                        <textarea
+                          value={editingText}
+                          onChange={(event) => setEditingText(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                              event.preventDefault();
+                              submitEdit(index);
+                            }
+                            if (event.key === 'Escape') {
+                              cancelEdit();
+                            }
+                          }}
+                          style={styles.editTextarea}
+                          autoFocus
+                        />
+                        <div style={styles.editActions}>
+                          <button type="button" onClick={cancelEdit} style={styles.iconTextButton}>
+                            <X size={14} />
+                            <span>Cancel</span>
+                          </button>
+                          <button type="button" onClick={() => submitEdit(index)} style={styles.primaryTextButton}>
+                            <Check size={14} />
+                            <span>Send</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      renderContentText(mainBody)
+                    )}
                   </div>
+
+                  {editingIndex !== index && (
+                    <div style={{ ...styles.messageActions, justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+                      {isUser ? (
+                        <button
+                          type="button"
+                          onClick={() => beginEdit(index, message.content)}
+                          disabled={isLoading}
+                          title="Edit message"
+                          style={{ ...styles.iconButton, ...(isLoading ? styles.iconButtonDisabled : {}) }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => copyMessage(index, message.content)}
+                            title="Copy response"
+                            style={styles.iconButton}
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRetryMessage(index)}
+                            disabled={isLoading}
+                            title="Retry response"
+                            style={{ ...styles.iconButton, ...(isLoading ? styles.iconButtonDisabled : {}) }}
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                          {copiedIndex === index && <span style={styles.copiedText}>Copied</span>}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Suggestions list (Only for assistant messages, render pills if present) */}
                   {!isUser && suggestions.length > 0 && (
@@ -445,6 +546,79 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.925rem',
     lineHeight: 1.6,
     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+  },
+  messageActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginTop: '6px',
+    minHeight: '28px',
+  },
+  iconButton: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '8px',
+    border: '1px solid #1e293b',
+    background: '#0b1533',
+    color: '#94a3b8',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconButtonDisabled: {
+    cursor: 'not-allowed',
+    opacity: 0.45,
+  },
+  copiedText: {
+    color: '#94a3b8',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+  },
+  editBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  editTextarea: {
+    minHeight: '88px',
+    background: '#081225',
+    color: '#f8fafc',
+    border: '1px solid #334155',
+    borderRadius: '8px',
+    resize: 'vertical',
+    lineHeight: 1.5,
+    fontFamily: 'inherit',
+    fontSize: '0.925rem',
+  },
+  editActions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: '8px',
+  },
+  iconTextButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    color: '#cbd5e1',
+    background: '#0b1533',
+    border: '1px solid #334155',
+    borderRadius: '8px',
+    padding: '6px 10px',
+    fontSize: '0.8rem',
+    fontWeight: 600,
+  },
+  primaryTextButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    color: '#fff',
+    background: '#2563eb',
+    border: '1px solid #3b82f6',
+    borderRadius: '8px',
+    padding: '6px 10px',
+    fontSize: '0.8rem',
+    fontWeight: 700,
   },
   paragraph: {
     margin: '0 0 0.75rem 0',

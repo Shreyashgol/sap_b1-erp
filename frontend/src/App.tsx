@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { ChatWindow } from './components/ChatWindow';
 import { ChatInput } from './components/ChatInput';
 import { 
@@ -25,6 +25,8 @@ const DEFAULT_API_URL = 'http://127.0.0.1:8000';
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const activeRequestIdRef = useRef(0);
   const [apiUrl, setApiUrl] = useState(() => {
     return localStorage.getItem('sapa_api_url') || DEFAULT_API_URL;
   });
@@ -50,10 +52,13 @@ function App() {
     localStorage.setItem('sapa_chat_history', JSON.stringify(newMessages));
   };
 
-  const handleSendMessage = async (text: string) => {
-    const userMessage: Message = { role: 'user', content: text };
-    const updatedMessages = [...messages, userMessage];
-    saveMessages(updatedMessages);
+  const runPrompt = async (text: string, baseMessages: Message[]) => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestId = activeRequestIdRef.current + 1;
+    activeRequestIdRef.current = requestId;
+    abortControllerRef.current = controller;
+
     setIsLoading(true);
 
     try {
@@ -63,6 +68,7 @@ function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ prompt: text }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -79,20 +85,76 @@ function App() {
         apiResponse: data.api_response,
       };
 
-      saveMessages([...updatedMessages, assistantMessage]);
+      if (activeRequestIdRef.current === requestId) {
+        saveMessages([...baseMessages, assistantMessage]);
+      }
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        if (activeRequestIdRef.current !== requestId) return;
+        const stoppedMessage: Message = {
+          role: 'assistant',
+          content: 'Request stopped.',
+        };
+        saveMessages([...baseMessages, stoppedMessage]);
+        return;
+      }
+
       console.error('API Call failed:', error);
       const errorMessage: Message = {
         role: 'assistant',
-        content: `⚠️ **Connection or Execution Failed**\n\nCould not connect to the backend at \`${apiUrl}\`.\n\n*Error Detail:* ${error.message || 'Network unreachable'}\n\n*Solution:* Make sure your FastAPI backend is running and CORS is enabled.`,
+        content: `**Connection or Execution Failed**\n\nCould not connect to the backend at \`${apiUrl}\`.\n\n*Error Detail:* ${error.message || 'Network unreachable'}\n\n*Solution:* Make sure your FastAPI backend is running and CORS is enabled.`,
       };
-      saveMessages([...updatedMessages, errorMessage]);
+      if (activeRequestIdRef.current === requestId) {
+        saveMessages([...baseMessages, errorMessage]);
+      }
     } finally {
-      setIsLoading(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      if (activeRequestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   };
 
+  const handleSendMessage = async (text: string) => {
+    if (isLoading) return;
+    const userMessage: Message = { role: 'user', content: text };
+    const updatedMessages = [...messages, userMessage];
+    saveMessages(updatedMessages);
+    await runPrompt(text, updatedMessages);
+  };
+
+  const handleEditMessage = async (index: number, text: string) => {
+    if (isLoading || messages[index]?.role !== 'user') return;
+    const editedMessages = [...messages.slice(0, index), { ...messages[index], content: text }];
+    saveMessages(editedMessages);
+    await runPrompt(text, editedMessages);
+  };
+
+  const handleRetryMessage = async (assistantIndex: number) => {
+    if (isLoading) return;
+    const previousUserIndex = [...messages]
+      .slice(0, assistantIndex)
+      .map((message, index) => ({ message, index }))
+      .reverse()
+      .find(({ message }) => message.role === 'user')?.index;
+
+    if (previousUserIndex === undefined) return;
+    const baseMessages = messages.slice(0, previousUserIndex + 1);
+    saveMessages(baseMessages);
+    await runPrompt(messages[previousUserIndex].content, baseMessages);
+  };
+
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+  };
+
   const handleClearChat = () => {
+    activeRequestIdRef.current += 1;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     saveMessages([]);
   };
 
@@ -200,7 +262,7 @@ function App() {
         <header style={styles.appHeader}>
           <div style={styles.headerTitleGroup}>
             <Server size={18} color="#06b6d4" />
-            <h2 style={styles.headerTitle}>🏢 SAP B1 ERP Supervisor Agent</h2>
+            <h2 style={styles.headerTitle}>SAP B1 ERP Supervisor Agent</h2>
           </div>
           <div style={styles.headerMetrics}>
             <div style={styles.metricItem}>
@@ -226,12 +288,14 @@ function App() {
         <ChatWindow 
           messages={messages} 
           onSuggestionClick={handleSendMessage} 
+          onEditMessage={handleEditMessage}
+          onRetryMessage={handleRetryMessage}
           isLoading={isLoading} 
         />
 
         {/* Footer Prompt Input */}
         <div style={styles.inputArea}>
-          <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+          <ChatInput onSendMessage={handleSendMessage} onStop={handleStop} isLoading={isLoading} />
         </div>
       </main>
     </div>
