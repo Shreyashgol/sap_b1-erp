@@ -10,6 +10,20 @@ class Base(DeclarativeBase):
     pass
 
 
+class SalesCustomerRecord(Base):
+    __tablename__ = "sales_customers"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    card_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    card_name: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(30))
+    email: Mapped[Optional[str]] = mapped_column(String(150))
+    billing_address: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class SalesOrderRecord(Base):
     __tablename__ = "sales_orders"
 

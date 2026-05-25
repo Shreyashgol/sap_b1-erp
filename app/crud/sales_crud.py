@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.db.sales_db import get_db_session
 from app.db.sales_models import (
+    SalesCustomerRecord,
     SalesInvoiceLineRecord,
     SalesInvoiceRecord,
     SalesOrderLineRecord,
@@ -19,6 +20,16 @@ DOCUMENT_MODELS = {
     "sales_order": (SalesOrderRecord, SalesOrderLineRecord, "line_items"),
     "ar_invoice": (SalesInvoiceRecord, SalesInvoiceLineRecord, "line_items"),
     "sales_return": (SalesReturnRecord, SalesReturnLineRecord, "line_items"),
+}
+
+PRODUCTION_TABLES = {
+    "customer": SalesCustomerRecord.__tablename__,
+    "sales_order": SalesOrderRecord.__tablename__,
+    "sales_order_line": SalesOrderLineRecord.__tablename__,
+    "ar_invoice": SalesInvoiceRecord.__tablename__,
+    "ar_invoice_line": SalesInvoiceLineRecord.__tablename__,
+    "sales_return": SalesReturnRecord.__tablename__,
+    "sales_return_line": SalesReturnLineRecord.__tablename__,
 }
 
 
@@ -64,7 +75,35 @@ def _serialize_record(document_type: str, record) -> dict[str, Any]:
     }
 
 
+def _serialize_customer(record: SalesCustomerRecord) -> dict[str, Any]:
+    return {
+        "cardCode": record.card_code,
+        "cardName": record.card_name,
+        "phone": record.phone,
+        "email": record.email,
+        "billingAddress": record.billing_address,
+        "status": record.status,
+    }
+
+
 class SalesRepository:
+    def table_names(self) -> dict[str, str]:
+        return PRODUCTION_TABLES.copy()
+
+    def get_customer(self, card_code: str) -> dict[str, Any] | None:
+        with get_db_session() as session:
+            record = session.scalars(
+                select(SalesCustomerRecord).where(SalesCustomerRecord.card_code == card_code)
+            ).first()
+            return _serialize_customer(record) if record else None
+
+    def list_customers(self, limit: int = 50) -> list[dict[str, Any]]:
+        with get_db_session() as session:
+            records = session.scalars(
+                select(SalesCustomerRecord).order_by(SalesCustomerRecord.card_name.asc()).limit(limit)
+            ).all()
+            return [_serialize_customer(record) for record in records]
+
     def create_document(self, intent) -> dict[str, Any]:
         header_model, line_model, relationship_name = DOCUMENT_MODELS[intent.documentType]
         if intent.documentType == "sales_order":

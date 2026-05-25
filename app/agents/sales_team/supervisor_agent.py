@@ -49,5 +49,10 @@ def execute(intent, repository):
         "agent": agent_name,
         "documentType": intent.documentType,
     }
+    if action != "fetch" and hasattr(repository, "table_names"):
+        data["postgresql"] = {
+            "database": "shared SAP agents PostgreSQL URL",
+            "tableNames": repository.table_names(),
+        }
     response.data = data
     return response

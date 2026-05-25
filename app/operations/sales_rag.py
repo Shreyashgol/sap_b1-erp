@@ -12,10 +12,10 @@ from app.config import (
     SALES_RAG_EMBEDDING_MODEL,
     SALES_RAG_PERSIST_DIR,
     SALES_RAG_USE_VECTOR,
-    SALES_SQL_GROQ_API_KEY,
-    SALES_SQL_GROQ_MODEL,
+    SALES_SQL_CLAUDE_API_KEY,
+    SALES_SQL_CLAUDE_MODEL,
 )
-from app.operations.groq_client import groq_chat_completion
+from app.operations.claude_client import claude_chat_completion
 
 RAG_ROOT = Path(__file__).resolve().parents[1] / "rag"
 DATA_DIR = RAG_ROOT / "data"
@@ -278,6 +278,8 @@ SAP SALES TABLES:
 - Sales Returns: header=ORDN, lines=RDN1 (join on "DocEntry")
 - Customers: OCRD (join ORDR, OINV, or ORDN on "CardCode")
 - Items:     OITM (join RDR1, INV1, or RDN1 on "ItemCode")
+- AR invoices linked to a sales order: JOIN INV1 invoice lines to ORDR sales order header with INV1."BaseEntry" = ORDR."DocEntry" and INV1."BaseType" = 17, then JOIN OINV on OINV."DocEntry" = INV1."DocEntry".
+- When the user says "sales order 504632", treat the number as ORDR."DocEntry" unless they explicitly say sales order number or DocNum.
 
 BUSINESS RULES:
 - Sales orders represent customer commitments and pipeline.
@@ -290,23 +292,29 @@ BUSINESS RULES:
 """
 
 
-def _build_sql_prompt(question: str, retrieval: dict[str, list[dict[str, Any]]]) -> list[dict[str, str]]:
+def _build_sql_prompt(question: str, retrieval: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     schema_context = "\n\n--\n\n".join(item["content"] for item in retrieval["schema"])
     query_context = "\n\n--\n\n".join(item["content"] for item in retrieval["queries"])
 
-    user = f"""SCHEMA_DETAILS:
+    context = f"""SCHEMA_DETAILS:
 {schema_context if schema_context else "No schema details found"}
 
 SIMILAR_SQL_EXAMPLES:
-{query_context if query_context else "No similar examples found"}
+{query_context if query_context else "No similar examples found"}"""
 
-USER_QUESTION:
+    user = f"""USER_QUESTION:
 {question}
 
 SQL:"""
     return [
-        {"role": "system", "content": SALES_SQL_SYSTEM},
-        {"role": "user", "content": user},
+        {"role": "system", "content": SALES_SQL_SYSTEM, "cache": True},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": context, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": user},
+            ],
+        },
     ]
 
 
@@ -316,13 +324,13 @@ def build_sales_rag_fetch_sql(fetch_query: str) -> dict[str, Any]:
         raise ValueError("Fetch query is empty")
 
     retrieval = _get_store().retrieve(question)
-    raw = groq_chat_completion(
+    raw = claude_chat_completion(
         _build_sql_prompt(question, retrieval),
         temperature=0,
         max_tokens=1024,
         timeout=60,
-        api_key=SALES_SQL_GROQ_API_KEY,
-        model=SALES_SQL_GROQ_MODEL,
+        api_key=SALES_SQL_CLAUDE_API_KEY,
+        model=SALES_SQL_CLAUDE_MODEL,
     )
     sql = _extract_sql(raw)
     _validate_generated_sql(sql)

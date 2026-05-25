@@ -2,7 +2,7 @@
 
 A unified **FastAPI backend + Streamlit Supervisor UI** for SAP Business One purchase workflows.
 
-A single **Supervisor Agent** (powered by LangGraph + Groq LLM) classifies every natural-language prompt and routes it to the correct sub-agent — Purchase Order, AP Invoice, or Purchase Return — without the user needing to know which document type they need.
+A single **Supervisor Agent** (powered by LangGraph + Claude LLM) classifies every natural-language prompt and routes it to the correct sub-agent — Purchase Order, AP Invoice, or Purchase Return — without the user needing to know which document type they need.
 
 ---
 
@@ -23,9 +23,9 @@ Supervisor Agent  ──LangGraph routing──►  Purchase Order Agent
                                         SAP Business One Service Layer
 ```
 
-**LLM stack:** All intent parsing, routing, SQL generation, and chat responses run through the **Groq API** (`llama-3.3-70b-versatile`).
+**LLM stack:** All intent parsing, routing, SQL generation, and chat responses run through the **Claude API** (`claude-opus-4-7` by default).
 
-**RAG fetch:** Analytical fetch queries (totals, rankings, overdue, etc.) bypass the intent parser and use ChromaDB + `sentence-transformers` to retrieve relevant schema and example SQL, then generate a strict SAP HANA `SELECT` query via Groq. The query is safely executed against an external SAP HANA Database API endpoint.
+**RAG fetch:** Analytical fetch queries (totals, rankings, overdue, etc.) bypass the intent parser and use ChromaDB + `sentence-transformers` to retrieve relevant schema and example SQL, then generate a strict SAP HANA `SELECT` query via Claude. The query is safely executed against an external SAP HANA Database API endpoint.
 
 ---
 
@@ -43,7 +43,7 @@ sap/
 ├── app/
 │   ├── main.py               ← FastAPI application entry point
 │   ├── config.py             ← All settings loaded from .env
-│   ├── chat_response.py      ← Formats the final chatbot reply via Groq
+│   ├── chat_response.py      ← Formats the final chatbot reply via Claude
 │   │
 │   ├── agents/
 │   │   ├── big_supervisor_agent.py
@@ -62,8 +62,8 @@ sap/
 │   ├── schema/               ← Pydantic request/response schemas
 │   │
 │   ├── operations/
-│   │   ├── groq_client.py    ← Thin wrapper around the Groq chat completions API
-│   │   ├── llm_client.py     ← Unified chat_completion() delegates to groq_client
+│   │   ├── claude_client.py  ← Thin wrapper around the Claude messages API
+│   │   ├── llm_client.py     ← Unified chat_completion() delegates to claude_client
 │   │   ├── sap_client.py     ← SAP Business One Service Layer HTTP client
 │   │   ├── purchase_rag.py   ← ChromaDB RAG store + SQL generation for analytics
 │   │   ├── sales_rag.py      ← Sales RAG SQL generation for analytics
@@ -91,7 +91,7 @@ sap/
 |---|---|
 | Python ≥ 3.10 | `python3 --version` |
 | PostgreSQL | Neon (recommended) or any Postgres instance |
-| Groq API key | Free tier at [console.groq.com](https://console.groq.com) |
+| Claude API key | Anthropic Console API key |
 | SAP Business One | Service Layer URL (for write operations) |
 
 ---
@@ -108,7 +108,9 @@ Open `.env` and fill in **at minimum**:
 
 ```bash
 SAP_AGENTS_DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
-GROQ_API_KEY=gsk_...
+CLAUDE_API_KEY=sk-ant-...
+CLAUDE_MODEL=claude-opus-4-7
+CLAUDE_PROMPT_CACHE=true
 ```
 
 ### 2. Create a virtual environment and install dependencies
@@ -127,13 +129,15 @@ All variables are read from `.env` at startup via `shared/env.py`.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `SAP_AGENTS_DATABASE_URL` | ✅ | — | PostgreSQL connection string |
-| `GROQ_API_KEY` | ✅ | — | Groq API key for all LLM calls |
+| `CLAUDE_API_KEY` | ✅ | — | Claude/Anthropic API key for all LLM calls |
 | `SAP_BASE_URL` | ⬜ | `http://localhost:50000/b1s/v1` | SAP Service Layer base URL |
 | `SAP_USERNAME` | ⬜ | `manager` | SAP login username |
 | `SAP_PASSWORD` | ⬜ | `password` | SAP login password |
 | `SAP_COMPANYDB` | ⬜ | `SBODEMOUS` | SAP company database name |
-| `GROQ_BASE_URL` | ⬜ | `https://api.groq.com/openai/v1` | Groq-compatible endpoint |
-| `GROQ_MODEL` | ⬜ | `llama-3.3-70b-versatile` | Groq model to use |
+| `CLAUDE_BASE_URL` | ⬜ | `https://api.anthropic.com/v1` | Claude API endpoint |
+| `CLAUDE_MODEL` | ⬜ | `claude-opus-4-7` | Claude model to use |
+| `CLAUDE_API_VERSION` | ⬜ | `2023-06-01` | Anthropic API version header |
+| `CLAUDE_PROMPT_CACHE` | ⬜ | `true` | Adds Claude `cache_control` to reusable system prompts |
 | `PURCHASE_RAG_EMBEDDING_MODEL` | ⬜ | `BAAI/bge-base-en-v1.5` | Sentence-transformer model for ChromaDB |
 | `PURCHASE_RAG_PERSIST_DIR` | ⬜ | `.rag_chroma/purchase` | ChromaDB persistence directory |
 | `SQL_QUERY_TIMEOUT` | ⬜ | `30` | Max seconds for a raw SQL fetch |
@@ -182,7 +186,7 @@ Once installed the package exposes the FastAPI app and all agents as importable 
 
 ```bash
 cp .env.example .env
-# Fill in SAP_AGENTS_DATABASE_URL and GROQ_API_KEY (minimum required)
+# Fill in SAP_AGENTS_DATABASE_URL and CLAUDE_API_KEY (minimum required)
 ```
 
 ### 2. Start the FastAPI backend
@@ -278,11 +282,11 @@ curl -X POST "http://127.0.0.1:8000/purchase-returns/parse-and-execute" \
 | Purchase Return: create, update, fetch, cancel, close, reopen | ✅ |
 | Bulk CSV / XLSX upload for purchase orders | ✅ |
 | OCR document reading (PDF, PNG, JPG — macOS only) | ✅ |
-| Analytical RAG fetch (ChromaDB + Groq HANA SQL generation) | ✅ |
+| Analytical RAG fetch (ChromaDB + Claude HANA SQL generation) | ✅ |
 | Transparent UI showing full Agent Routing Flow & SQL Generation | ✅ |
 | Fully simulated Dummy SAP Service Layer for local development | ✅ |
 | External SAP HANA Database API integration | ✅ |
-| Groq LLM for all inference | ✅ |
+| Claude LLM for all inference | ✅ |
 
 ---
 

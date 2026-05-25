@@ -151,5 +151,14 @@
     "tables_used": ["ORDN"],
     "embedding_text": "total sales return value total customer returns amount returned goods credit value",
     "sql": "SELECT SUM(T0.\"DocTotal\") AS \"total_sales_return_value\" FROM ORDN T0 WHERE COALESCE(T0.\"CANCELED\", 'N') <> 'Y'"
+  },
+  {
+    "question": "fetch the AR invoice linked to sales order 504632",
+    "intent": "find AR invoice created from a sales order",
+    "business_context": "AR invoices created from sales orders are linked through invoice line BaseEntry and BaseType 17",
+    "document_type": "ar_invoice",
+    "tables_used": ["ORDR", "INV1", "OINV"],
+    "embedding_text": "ar invoice linked to sales order invoice from sales order base entry base type 17 related invoice fetch linked document",
+    "sql": "SELECT DISTINCT T2.\"DocEntry\", T2.\"DocNum\", T2.\"DocDate\", T2.\"CardCode\", T2.\"CardName\", T2.\"DocTotal\" FROM ORDR T0 JOIN INV1 T1 ON T1.\"BaseEntry\" = T0.\"DocEntry\" AND T1.\"BaseType\" = 17 JOIN OINV T2 ON T2.\"DocEntry\" = T1.\"DocEntry\" WHERE T0.\"DocEntry\" = 504632 LIMIT 10"
   }
 ]

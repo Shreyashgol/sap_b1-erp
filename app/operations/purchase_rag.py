@@ -8,8 +8,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.config import PURCHASE_RAG_EMBEDDING_MODEL, PURCHASE_RAG_PERSIST_DIR
-from app.operations.groq_client import groq_chat_completion
+from app.config import (
+    PURCHASE_RAG_EMBEDDING_MODEL,
+    PURCHASE_RAG_PERSIST_DIR,
+    PURCHASE_TEAM_CLAUDE_API_KEY,
+    PURCHASE_TEAM_CLAUDE_MODEL,
+)
+from app.operations.claude_client import claude_chat_completion
 
 
 RAG_ROOT = Path(__file__).resolve().parents[1] / "rag"
@@ -291,7 +296,7 @@ def _validate_generated_sql(sql: str):
         raise ValueError(f"RAG generated SQL with unsupported tables: {', '.join(sorted(unknown_tables))}")
 
 
-def _build_sql_prompt(question: str, retrieval: dict[str, list[dict[str, Any]]]) -> list[dict[str, str]]:
+def _build_sql_prompt(question: str, retrieval: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     schema_context = "\n\n--\n\n".join(item["content"] for item in retrieval["schema"])
     query_context = "\n\n--\n\n".join(item["content"] for item in retrieval["queries"])
 
@@ -393,17 +398,26 @@ OUTPUT FORMAT:
 - No markdown.
 - No extra whitespace or formatting text."""
 
-    user = f"""SCHEMA_DETAILS:
+    context = f"""SCHEMA_DETAILS:
 {schema_context if schema_context else "No schema details found"}
 
 SIMILAR_SQL_EXAMPLES:
-{query_context if query_context else "No similar examples found"}
+{query_context if query_context else "No similar examples found"}"""
 
-USER_QUESTION:
+    user = f"""USER_QUESTION:
 {question}
 
 SQL:"""
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    return [
+        {"role": "system", "content": system, "cache": True},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": context, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": user},
+            ],
+        },
+    ]
 
 
 def build_purchase_rag_fetch_sql(fetch_query: str) -> dict[str, Any]:
@@ -412,7 +426,13 @@ def build_purchase_rag_fetch_sql(fetch_query: str) -> dict[str, Any]:
         raise ValueError("Fetch query is empty")
 
     retrieval = _get_store().retrieve(question)
-    raw_sql = groq_chat_completion(_build_sql_prompt(question, retrieval), temperature=0, max_tokens=1024)
+    raw_sql = claude_chat_completion(
+        _build_sql_prompt(question, retrieval),
+        temperature=0,
+        max_tokens=1024,
+        api_key=PURCHASE_TEAM_CLAUDE_API_KEY,
+        model=PURCHASE_TEAM_CLAUDE_MODEL,
+    )
     sql = _extract_sql(raw_sql)
     _validate_generated_sql(sql)
 

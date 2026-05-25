@@ -1,23 +1,26 @@
 import json
 from typing import Any
 
-from app.config import GROQ_API_KEY
-from app.operations.groq_client import groq_chat_completion
+from app.config import CHAT_RESPONSE_CLAUDE_API_KEY, CHAT_RESPONSE_CLAUDE_MODEL
+from app.operations.claude_client import claude_chat_completion
 from app.operations.llm_client import chat_completion
 
 
 SYSTEM_PROMPT = """
-You are a helpful SAP Business One ERP assistant inside a chatbot.
+You are a helpful SAP Business One ERP assistant inside a chatbot named Shera.
 Answer like a practical business assistant, not like a raw API logger.
 
 Your job:
 - Explain what happened in plain language.
 - Mention the routed document type and action only if useful.
 - If the backend failed, explain what information is missing or what the user should fix.
+- If the backend detail says the HANA SQL API rejected the generated SELECT query, describe it as a query-generation issue, not a permissions issue.
+- Only describe a backend failure as authentication/permission related when the backend explicitly says Unauthorized, Forbidden, token, credential, or API key.
 - Generate the next 2-4 useful suggestions from the user's prompt, routing decision, and backend response.
 - For fetch results, mention the specific result shape: row count, key totals, top rows, or the entity asked about.
+- If the user asks for a graph, chart, plot, trend, or visualization, explain that the interface will render a chart when the result contains tabular numeric data. Still summarize the answer in text.
 - If backendResponse.data.strategy is rag, explain the answer as an analytical fetch without exposing implementation details.
-- Keep answers concise, specific, and interactive.
+- Keep answers concise, specific, and interactive. Prefer a friendly "Here is what I found" style, then give 2-4 next-step suggestions phrased as clickable follow-up prompts.
 - Do not invent SAP document numbers, vendor names, item names, prices, or database records.
 - If suggesting prompts, use placeholders only when the needed value is unknown.
 - Do not expose raw tokens, secrets, stack traces, or internal implementation details.
@@ -53,10 +56,15 @@ def _fallback_response(
         summary = _rows_summary(rows) if isinstance(rows, list) else ""
         suggestions = _suggestions(prompt, document_type)
         analysis_note = " I handled this as an analytical fetch." if strategy == "rag" else ""
+        chart_note = (
+            "\n\nI also prepared the chart view for this result."
+            if _wants_chart(prompt) and rows
+            else ""
+        )
         return (
             f"{message}\n\n"
             f"I handled this as a **{document_type}** `{action}` request and found **{row_count}** matching result(s).{analysis_note}"
-            f"{summary}\n\n"
+            f"{summary}{chart_note}\n\n"
             f"**You can ask next:**\n{suggestions}"
         )
 
@@ -135,6 +143,11 @@ def _suggestions(prompt: str, document_type: str) -> str:
     return "\n".join(f"- {suggestion}" for suggestion in suggestions[:4])
 
 
+def _wants_chart(prompt: str) -> bool:
+    lowered = prompt.lower()
+    return any(term in lowered for term in ("chart", "graph", "plot", "visualize", "visualise", "trend", "dashboard"))
+
+
 def generate_chat_response(
     prompt: str,
     routing_decision: dict[str, Any],
@@ -159,8 +172,15 @@ def generate_chat_response(
                 ),
             },
         ]
-        if GROQ_API_KEY:
-            return groq_chat_completion(messages, temperature=0.2, max_tokens=2048, timeout=120)
+        if CHAT_RESPONSE_CLAUDE_API_KEY:
+            return claude_chat_completion(
+                messages,
+                temperature=0.2,
+                max_tokens=2048,
+                timeout=120,
+                api_key=CHAT_RESPONSE_CLAUDE_API_KEY,
+                model=CHAT_RESPONSE_CLAUDE_MODEL,
+            )
         return chat_completion(messages, temperature=0.3, max_tokens=2048, timeout=120)
     except Exception:
         return _fallback_response(prompt, routing_decision, api_response, status_code)

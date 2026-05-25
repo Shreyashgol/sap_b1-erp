@@ -1,4 +1,4 @@
-from app.operations.groq_client import groq_chat_completion
+from app.operations.claude_client import claude_chat_completion
 
 
 def chat_completion(
@@ -8,7 +8,7 @@ def chat_completion(
     max_tokens: int = 2048,
     timeout: int = 120,
 ) -> str:
-    return groq_chat_completion(
+    return claude_chat_completion(
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,

@@ -1,7 +1,8 @@
 import json
 from typing import Any
 
-from app.operations.groq_client import groq_chat_completion
+from app.config import PURCHASE_TEAM_CLAUDE_API_KEY, PURCHASE_TEAM_CLAUDE_MODEL
+from app.operations.claude_client import claude_chat_completion
 
 
 def _extract_sql(text: str) -> str:
@@ -53,7 +54,13 @@ SQL:"""
     ]
 
     try:
-        raw_sql = groq_chat_completion(messages, temperature=0, max_tokens=512)
+        raw_sql = claude_chat_completion(
+            messages,
+            temperature=0,
+            max_tokens=512,
+            api_key=PURCHASE_TEAM_CLAUDE_API_KEY,
+            model=PURCHASE_TEAM_CLAUDE_MODEL,
+        )
         return _extract_sql(raw_sql)
     except Exception:
         # Fallback if LLM fails so we don't break the actual operation

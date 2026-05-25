@@ -1,11 +1,14 @@
 import json
+from decimal import Decimal
 from typing import Any
 
+import pandas as pd
 import requests
 import streamlit as st
 
 from app.agents.big_supervisor_agent import route as big_supervisor_route
 from app.chat_response import generate_chat_response
+from app.config import BIG_SUPERVISOR_CLAUDE_MODEL, SALES_SQL_CLAUDE_MODEL, SALES_TEAM_CLAUDE_MODEL
 
 
 DEFAULT_API_URL = "http://127.0.0.1:8000"
@@ -59,6 +62,84 @@ def call_backend(api_url: str, endpoint: str, prompt: str) -> tuple[int | None, 
     return response.status_code, body
 
 
+def wants_chart(prompt: str) -> bool:
+    lowered = prompt.lower()
+    chart_terms = (
+        "chart",
+        "graph",
+        "plot",
+        "visualize",
+        "visualise",
+        "bar chart",
+        "line chart",
+        "trend",
+        "dashboard",
+    )
+    return any(term in lowered for term in chart_terms)
+
+
+def extract_rows(api_response: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(api_response, dict):
+        return []
+    data = api_response.get("data") or {}
+    rows = data.get("results") or data.get("rows") or data.get("value") or []
+    return rows if isinstance(rows, list) and all(isinstance(row, dict) for row in rows) else []
+
+
+def _flatten_row(row: dict[str, Any]) -> dict[str, Any]:
+    flattened: dict[str, Any] = {}
+    for key, value in row.items():
+        if isinstance(value, dict):
+            for child_key, child_value in value.items():
+                flattened[f"{key}_{child_key}"] = child_value
+        elif not isinstance(value, list):
+            flattened[key] = value
+    return flattened
+
+
+def render_requested_chart(prompt: str, api_response: dict[str, Any]):
+    rows = extract_rows(api_response)
+    if not wants_chart(prompt) or not rows:
+        return
+
+    df = pd.DataFrame([_flatten_row(row) for row in rows])
+    if df.empty:
+        return
+
+    for column in df.columns:
+        df[column] = df[column].map(lambda value: float(value) if isinstance(value, Decimal) else value)
+
+    numeric_columns = list(df.select_dtypes(include="number").columns)
+    if not numeric_columns:
+        st.info("I found rows for this query, but there is no numeric column to chart.")
+        st.dataframe(df, use_container_width=True)
+        return
+
+    text_columns = list(df.select_dtypes(include=["object", "string"]).columns)
+    date_like_columns = [
+        column for column in df.columns
+        if "date" in column.lower() or "month" in column.lower() or "year" in column.lower()
+    ]
+    x_column = date_like_columns[0] if date_like_columns else (text_columns[0] if text_columns else df.columns[0])
+    y_column = numeric_columns[0]
+
+    st.markdown("#### Chart")
+    chart_df = df[[x_column, y_column]].dropna()
+    chart_df[x_column] = chart_df[x_column].astype(str)
+    chart_df = chart_df.set_index(x_column)
+
+    lowered = prompt.lower()
+    if "line" in lowered or "trend" in lowered or "month" in lowered or "date" in lowered:
+        st.line_chart(chart_df, use_container_width=True)
+    elif "area" in lowered:
+        st.area_chart(chart_df, use_container_width=True)
+    else:
+        st.bar_chart(chart_df, use_container_width=True)
+
+    with st.expander("View chart data"):
+        st.dataframe(df, use_container_width=True)
+
+
 # ── Session state init ────────────────────────────────────────────────────────
 for key, default in {"history": []}.items():
     if key not in st.session_state:
@@ -68,7 +149,7 @@ for key, default in {"history": []}.items():
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("SAP ERP Supervisor")
-    st.caption("One Big Supervisor routes every request to the right team and sub-agent.")
+    st.caption("Big Supervisor routes each request to Purchase Team or Sales Team sub-agents.")
 
     api_url = st.text_input("FastAPI URL", value=DEFAULT_API_URL)
 
@@ -84,20 +165,26 @@ with st.sidebar:
     st.divider()
     st.markdown("**Teams Available**")
     st.markdown("🔵 **Purchase Team** — PO, AP Invoice, Purchase Return")
-    st.markdown("🟢 **Sales Team** — SO, AP Invoice, Sales Return")
+    st.markdown("🟢 **Sales Team** — SO, AR Invoice, Sales Return")
+    st.caption(
+        f"Claude models: supervisor `{BIG_SUPERVISOR_CLAUDE_MODEL}`, "
+        f"sales parser `{SALES_TEAM_CLAUDE_MODEL}`, sales SQL `{SALES_SQL_CLAUDE_MODEL}`"
+    )
 
 
 # ── Main chat area ────────────────────────────────────────────────────────────
 st.title("🏢 SAP B1 ERP Supervisor Agent")
 st.caption(
-    "Ask anything in plain English. The Big Supervisor decides which team to call: "
-    "**Purchase** or **Sales**."
+    "Ask anything in plain English. The Big Supervisor calls either the **Purchase Team** "
+    "or the **Sales Team**, then routes to the correct sub-agent."
 )
 
 # Render chat history
 for message in st.session_state.history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if message["role"] == "assistant":
+            render_requested_chart(message.get("prompt", ""), message.get("api_response") or {})
         if message["role"] == "assistant" and show_json:
             _team = message.get("team", "purchase")
             _routing = message.get("routing")
@@ -111,7 +198,7 @@ for message in st.session_state.history:
                     _action = _routing.get("action", "fetch").title()
                     _subagent = _routing.get("subagent", "")
                     st.markdown(
-                        f'**Big Supervisor** ➡️ <span class="{_badge_cls}">{_team_label}</span> ➡️ **{_action} {_doc_type} Sub-Agent**',
+                        f'**Big Supervisor** -> <span class="{_badge_cls}">{_team_label}</span> -> **{_action} {_doc_type} Sub-Agent**',
                         unsafe_allow_html=True,
                     )
                     st.json(_routing)
@@ -141,7 +228,7 @@ for message in st.session_state.history:
 
 # ── Chat input ────────────────────────────────────────────────────────────────
 prompt = st.chat_input(
-    "Example: Show the top 5 sales order  |  Show overdue purchase orders"
+    "Example: Show top 5 sales orders | Show overdue purchase orders"
 )
 
 if prompt:
@@ -177,6 +264,7 @@ if prompt:
                 )
 
                 st.markdown(assistant_reply)
+                render_requested_chart(prompt, api_response)
 
                 # ── Step 4: Technical details expander ───────────────────────
                 if show_json:
@@ -186,7 +274,7 @@ if prompt:
                         doc_type_label = routing_decision.get("documentType", "unknown").replace("_", " ").title()
                         action_label = routing_decision.get("action", "fetch").title()
                         st.markdown(
-                            f'**Big Supervisor** ➡️ <span class="{_badge_cls}">{team_label}</span> ➡️ **{action_label} {doc_type_label} Sub-Agent**',
+                            f'**Big Supervisor** -> <span class="{_badge_cls}">{team_label}</span> -> **{action_label} {doc_type_label} Sub-Agent**',
                             unsafe_allow_html=True,
                         )
                         st.json(routing_decision)
@@ -223,6 +311,7 @@ if prompt:
                     {
                         "role": "assistant",
                         "content": assistant_reply,
+                        "prompt": prompt,
                         "team": team,
                         "team_label": team_label,
                         "routing": routing_decision,

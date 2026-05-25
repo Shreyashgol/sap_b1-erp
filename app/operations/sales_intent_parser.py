@@ -3,9 +3,9 @@ import re
 
 import requests
 
-from app.config import SALES_TEAM_GROQ_API_KEY, SALES_TEAM_GROQ_MODEL
+from app.config import SALES_TEAM_CLAUDE_API_KEY, SALES_TEAM_CLAUDE_MODEL
 from app.model.sales_intent import SalesDocumentLine, SalesIntent
-from app.operations.groq_client import groq_chat_completion
+from app.operations.claude_client import claude_chat_completion
 
 
 PARSE_PROMPT_TEMPLATE = """
@@ -133,13 +133,13 @@ def _parse_locally(user_prompt: str) -> SalesIntent:
 
 def parse_sales_intent(user_prompt: str) -> SalesIntent:
     try:
-        raw = groq_chat_completion(
+        raw = claude_chat_completion(
             [{"role": "user", "content": PARSE_PROMPT_TEMPLATE.format(user_prompt=user_prompt)}],
             temperature=0.1,
             max_tokens=1024,
             timeout=60,
-            api_key=SALES_TEAM_GROQ_API_KEY,
-            model=SALES_TEAM_GROQ_MODEL,
+            api_key=SALES_TEAM_CLAUDE_API_KEY,
+            model=SALES_TEAM_CLAUDE_MODEL,
         )
         parsed = _extract_json(raw)
     except (requests.exceptions.RequestException, RuntimeError, json.JSONDecodeError):

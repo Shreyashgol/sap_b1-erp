@@ -1,12 +1,12 @@
 from app.agents.purchase_team.supervisor_agent import execute as purchase_team_execute
 from app.agents.sales_team.supervisor_agent import routing_decision as sales_routing_decision
-from app.config import BIG_SUPERVISOR_GROQ_API_KEY, BIG_SUPERVISOR_GROQ_MODEL
-from app.operations.groq_client import groq_chat_completion
+from app.config import BIG_SUPERVISOR_CLAUDE_API_KEY, BIG_SUPERVISOR_CLAUDE_MODEL
+from app.operations.claude_client import claude_chat_completion
 from app.operations.sales_intent_parser import parse_sales_intent
 from app.schema.response import PurchaseTeamRoutingResponse
 
 
-_BIG_SUPERVISOR_SYSTEM = """You are the top-level SAP ERP supervisor.
+_BIG_SUPERVISOR_SYSTEM = """You are the top-level SAP ERP supervisor named Shera .
 
 Choose the correct team for the user request:
 - purchase: vendor-side buying documents, purchase orders, AP invoices, purchase invoices, purchase returns.
@@ -17,21 +17,31 @@ Reply with one lowercase word only: purchase or sales.
 
 
 def decide_team(prompt: str) -> str:
-    result = groq_chat_completion(
-        [
-            {"role": "system", "content": _BIG_SUPERVISOR_SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-        max_tokens=5,
-        timeout=30,
-        api_key=BIG_SUPERVISOR_GROQ_API_KEY,
-        model=BIG_SUPERVISOR_GROQ_MODEL,
-    )
-    team = result.strip().lower().split()[0]
-    if team not in {"purchase", "sales"}:
-        raise ValueError(f"Big supervisor returned invalid team: {result}")
-    return team
+    if BIG_SUPERVISOR_CLAUDE_API_KEY:
+        try:
+            result = claude_chat_completion(
+                [
+                    {"role": "system", "content": _BIG_SUPERVISOR_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+                max_tokens=5,
+                timeout=30,
+                api_key=BIG_SUPERVISOR_CLAUDE_API_KEY,
+                model=BIG_SUPERVISOR_CLAUDE_MODEL,
+            )
+            team = result.strip().lower().split()[0]
+            if team in {"purchase", "sales"}:
+                return team
+        except Exception:
+            pass
+
+    lowered = prompt.lower()
+    sales_terms = ("sales", "customer", "ar invoice", "receivable", "sales order", "sales return", "revenue")
+    purchase_terms = ("purchase", "vendor", "ap invoice", "payable", "purchase order", "purchase return", "supplier")
+    sales_score = sum(term in lowered for term in sales_terms)
+    purchase_score = sum(term in lowered for term in purchase_terms)
+    return "sales" if sales_score > purchase_score else "purchase"
 
 
 def route(prompt: str) -> dict:
