@@ -305,12 +305,7 @@ print(result["routing_decision"]["documentType"])
 PY
 ```
 
-Expected output:
-```
-SAP B1 Purchase Supervisor Agent
-11
-purchase_order
-```
+
 
 ---
 
