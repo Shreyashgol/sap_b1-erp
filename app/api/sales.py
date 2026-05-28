@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.crud.sales_crud import SalesRepository
+from app.agents.sales_team.supervisor_agent import execute as execute_sales_workflow
 from app.operations.sales_intent_parser import parse_sales_intent
-from app.operations.utils import load_agent_module
 from app.operations.utils import verify_jwt_token
 from app.schema.purchase_order import PromptRequest
 from app.schema.response import SalesActionResponse
@@ -21,8 +21,7 @@ def sales_parse_and_execute(request: PromptRequest, user: str = Depends(verify_j
 
     try:
         repository = SalesRepository()
-        agent_module = load_agent_module("supervisor_agent", "sales_team")
-        return agent_module.execute(intent, repository)
+        return execute_sales_workflow(intent, repository)
     except HTTPException:
         raise
     except ValueError as exc:

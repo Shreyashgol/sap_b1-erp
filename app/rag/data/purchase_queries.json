@@ -18,6 +18,15 @@
     "sql": "SELECT COUNT(*) AS \"open_purchase_order_count\" FROM opor WHERE \"DocStatus\" = 'O' AND COALESCE(\"CANCELED\", 'N') <> 'Y'"
   },
   {
+    "question": "show top 5 purchase orders",
+    "intent": "rank purchase order documents by value with item summary",
+    "business_context": "top purchase order document reports should include OPOR header value plus POR1 item summary so item, quantity, and average unit price columns are not empty",
+    "document_type": "purchase_order",
+    "tables_used": ["opor", "por1"],
+    "embedding_text": "show top 5 purchase orders highest purchase orders biggest po documents top po list purchase order item summary quantity unit price line details",
+    "sql": "SELECT p0.\"DocEntry\", p0.\"DocNum\", p0.\"DocDate\", p0.\"CardCode\", p0.\"CardName\", STRING_AGG(p1.\"ItemCode\" || ' - ' || p1.\"Dscription\", ', ') AS \"Items\", CAST(SUM(p1.\"Quantity\") AS DOUBLE) AS \"TotalQuantity\", CAST(SUM(p1.\"LineTotal\") / NULLIF(SUM(p1.\"Quantity\"), 0) AS DOUBLE) AS \"AverageUnitPrice\", CAST(p0.\"DocTotal\" AS DOUBLE) AS \"DocTotal\", p0.\"DocStatus\" FROM (SELECT \"DocEntry\", \"DocNum\", \"DocDate\", \"CardCode\", \"CardName\", \"DocTotal\", \"DocStatus\" FROM opor WHERE COALESCE(\"CANCELED\", 'N') <> 'Y' ORDER BY \"DocTotal\" DESC LIMIT 5) p0 LEFT JOIN por1 p1 ON p1.\"DocEntry\" = p0.\"DocEntry\" GROUP BY p0.\"DocEntry\", p0.\"DocNum\", p0.\"DocDate\", p0.\"CardCode\", p0.\"CardName\", p0.\"DocTotal\", p0.\"DocStatus\" ORDER BY p0.\"DocTotal\" DESC"
+  },
+  {
     "question": "which vendors have the highest purchase order value",
     "intent": "vendor-wise purchase order value ranking",
     "business_context": "group purchase order committed value by vendor from OPOR",

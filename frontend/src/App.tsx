@@ -61,13 +61,23 @@ function App() {
 
     setIsLoading(true);
 
+    const conversationHistory = baseMessages
+      .slice(0, -1)
+      .slice(-12)
+      .map((message) => ({
+        role: message.role,
+        content: message.content,
+        team: message.team,
+        routing: message.routing,
+      }));
+
     try {
       const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: text, conversation_history: conversationHistory }),
         signal: controller.signal,
       });
 

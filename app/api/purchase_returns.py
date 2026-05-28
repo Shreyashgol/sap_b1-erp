@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.agents.purchase_team.purchase_return.supervisor_agent import execute as execute_purchase_return_workflow
 from app.crud.purchase_return_crud import PurchaseReturnRepository
 from app.operations.purchase_return_intent_parser import parse_purchase_return_intent
-from app.operations.utils import load_agent_module, verify_jwt_token
+from app.operations.utils import verify_jwt_token
 from app.schema.purchase_return import PromptRequest
 from app.schema.response import PurchaseReturnActionResponse
 
@@ -19,4 +20,4 @@ def parse_and_execute(request: PromptRequest, user: str = Depends(verify_jwt_tok
         raise HTTPException(status_code=400, detail=f"Intent parsing failed: {str(exc)}") from exc
 
     repository = PurchaseReturnRepository()
-    return load_agent_module("supervisor_agent", "purchase_team/purchase_return").execute(intent, repository)
+    return execute_purchase_return_workflow(intent, repository)

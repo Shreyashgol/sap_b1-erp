@@ -34,6 +34,12 @@ SALES_SQL_CLAUDE_MODEL = os.getenv("SALES_SQL_CLAUDE_MODEL", SALES_TEAM_CLAUDE_M
 CHAT_RESPONSE_CLAUDE_API_KEY = os.getenv("CHAT_RESPONSE_CLAUDE_API_KEY", CLAUDE_API_KEY)
 CHAT_RESPONSE_CLAUDE_MODEL = os.getenv("CHAT_RESPONSE_CLAUDE_MODEL", CLAUDE_MODEL)
 
+# Groq setup is intentionally dormant for now. Keep Claude as the active provider.
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_TIMEOUT = int(os.getenv("GROQ_TIMEOUT", "60"))
+
 DATABASE_CONNECTION_STRING = resolve_database_connection_string()
 
 SQL_QUERY_TIMEOUT = int(os.getenv("SQL_QUERY_TIMEOUT", "30"))

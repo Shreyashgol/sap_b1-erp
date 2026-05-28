@@ -1,6 +1,15 @@
-from fastapi import HTTPException
-
-from app.operations.utils import load_agent_module
+from app.agents.purchase_team.langgraph_workflow import (
+    build_purchase_document_workflow,
+    purchase_return_create_rules,
+)
+from app.agents.purchase_team.purchase_return import (
+    cancel_agent,
+    close_agent,
+    create_agent,
+    fetch_agent,
+    reopen_agent,
+    update_agent,
+)
 
 
 ACTION_AGENT_MAP = {
@@ -12,18 +21,21 @@ ACTION_AGENT_MAP = {
     "create": "create_agent",
 }
 
+ACTION_TOOLS = {
+    "cancel_agent": cancel_agent.execute,
+    "close_agent": close_agent.execute,
+    "reopen_agent": reopen_agent.execute,
+    "update_agent": update_agent.execute,
+    "fetch_agent": fetch_agent.execute,
+    "create_agent": create_agent.execute,
+}
 
-def execute(intent, repository):
-    action = (intent.action or "create").lower()
-    agent_name = ACTION_AGENT_MAP.get(action, "create_agent")
 
-    if action in {"cancel", "close", "reopen", "update"} and not intent.docEntry:
-        raise HTTPException(status_code=400, detail=f"Supervisor blocked {action}: DocEntry is required.")
-    if action == "create" and (not intent.cardCode or not intent.items):
-        raise HTTPException(status_code=400, detail="Supervisor blocked create: vendor CardCode and at least one item are required.")
-
-    response = load_agent_module(agent_name, "purchase_team/purchase_return").execute(intent, repository)
-    data = response.data or {}
-    data["supervisor"] = {"decision": f"Routing to {agent_name}", "action": action, "agent": agent_name}
-    response.data = data
-    return response
+execute = build_purchase_document_workflow(
+    agent_folder="purchase_team/purchase_return",
+    action_agent_map=ACTION_AGENT_MAP,
+    action_tools=ACTION_TOOLS,
+    default_action="create",
+    default_agent="create_agent",
+    validation_rules=purchase_return_create_rules,
+)

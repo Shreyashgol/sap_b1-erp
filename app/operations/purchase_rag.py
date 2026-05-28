@@ -411,6 +411,8 @@ STATUS RULES:
 
 BUSINESS RULES:
 - Purchase orders represent procurement commitments.
+- For top/ranked purchase order document lists, include useful line summary fields from por1 when possible:
+  item summary, total quantity, average unit price, and document total.
 - AP invoices represent actual vendor liabilities.
 - For AP invoice pending amount, outstanding amount, unpaid amount, payable balance, or balance due,
   always use ("DocTotal" - IFNULL("PaidToDate", 0)); never select or filter on a physical "BalanceDue" column.

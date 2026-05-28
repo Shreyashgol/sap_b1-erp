@@ -1,7 +1,9 @@
 import json
+import hashlib
 from typing import Any
 
 from app.config import CHAT_RESPONSE_CLAUDE_API_KEY, CHAT_RESPONSE_CLAUDE_MODEL
+from app.operations.conversation_memory import conversation_context_block, normalize_conversation_history
 from app.operations.claude_client import claude_chat_completion
 from app.operations.llm_client import chat_completion
 
@@ -29,6 +31,8 @@ RESPONSE FORMAT RULES - FOLLOW STRICTLY:
    Always show data in a clean markdown table.
    Use proper column headers in UPPERCASE.
    Align columns properly.
+   Choose columns from fields that actually exist in backendResponse data.
+   Do not create columns that would be mostly N/A.
 
 4.KEY INSIGHTS
    Always end with business insights:
@@ -61,6 +65,10 @@ FOR SALES ORDER DATA show columns:
 
 FOR PURCHASE ORDER DATA show columns:
    PO NO | DATE | VENDOR | ITEM | QTY | UNIT PRICE | TOTAL | STATUS
+   If backendResponse only contains header-level purchase order fields and no item/quantity/price fields,
+   use: PO NO | DATE | VENDOR | TOTAL | STATUS.
+   If backendResponse contains item summary fields such as Items, TotalQuantity, or AverageUnitPrice,
+   use those values for ITEM, QTY, and UNIT PRICE.
 
 FOR INVOICE DATA show columns:
    INVOICE NO | DATE | PARTY | AMOUNT | TAX | STATUS
@@ -85,6 +93,12 @@ If user asks for a chart or graph:
 If data is empty or missing:
    State clearly what was searched and that no records were found.
    Suggest corrective action.
+
+CONVERSATION MEMORY RULES:
+   - Use previousConversation to understand follow-up requests like "same for vendor", "show more", "what about invoices", or "use the same date range".
+   - Do not repeat old answers unless the user asks for a recap.
+   - Resolve pronouns and omitted document types from previousConversation, but prioritize the current userPrompt.
+   - Never claim memory beyond the supplied previousConversation.
 """
 
 
@@ -214,21 +228,33 @@ def generate_chat_response(
     routing_decision: dict[str, Any],
     api_response: dict[str, Any],
     status_code: int | None,
+    conversation_history: list[dict[str, Any]] | None = None,
 ) -> str:
+    normalized_history = normalize_conversation_history(conversation_history)
+    context_block = conversation_context_block(normalized_history)
+    cache_fingerprint = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:16]
     user_payload = {
         "userPrompt": prompt,
+        "previousConversation": normalized_history,
         "routingDecision": routing_decision,
         "backendStatusCode": status_code,
         "backendResponse": api_response,
+        "promptCache": {
+            "provider": "claude",
+            "stableSystemPromptCacheKey": cache_fingerprint,
+            "systemPromptCacheEnabled": True,
+            "historyIncluded": bool(normalized_history),
+        },
     }
 
     try:
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": SYSTEM_PROMPT, "cache": True},
             {
                 "role": "user",
                 "content": (
                     "Create the final chatbot reply for this SAP request.\n\n"
+                    f"{context_block}\n\n"
                     f"{_json_preview(user_payload)}"
                 ),
             },

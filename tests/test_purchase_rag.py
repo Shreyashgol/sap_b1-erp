@@ -33,6 +33,18 @@ class PurchaseRagRetrievalTest(unittest.TestCase):
         self.assertIn('("DocTotal" - IFNULL("PaidToDate", 0))', example_sql)
         self.assertNotIn('COALESCE("BalanceDue"', example_sql)
 
+    def test_top_purchase_orders_retrieves_line_summary_example(self):
+        store = _LexicalPurchaseRagStore()
+        retrieval = store.retrieve("Show me the top 5 purchase orders", top_k_schema=4, top_k_queries=3)
+
+        example_sql = "\n".join(item["metadata"].get("sql", "") for item in retrieval["queries"])
+
+        self.assertIn("por1", example_sql)
+        self.assertIn("STRING_AGG", example_sql)
+        self.assertIn('"Items"', example_sql)
+        self.assertIn('"TotalQuantity"', example_sql)
+        self.assertIn('"AverageUnitPrice"', example_sql)
+
     def test_ap_invoice_po_variance_retrieves_base_document_example(self):
         store = _LexicalPurchaseRagStore()
         retrieval = store.retrieve(
